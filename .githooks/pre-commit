@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+# Mutates go.mod/go.sum if needed, then fails so the updates can be staged.
+go mod tidy
+git diff --exit-code -- go.mod go.sum || {
+    echo "go mod tidy updated go.mod/go.sum. Stage those files and commit again."
+    exit 1
+}
+
+make fmt-check vet lint
