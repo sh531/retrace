@@ -1,0 +1,18 @@
+{
+  "name": "retrace",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "1.27.1"
+    }
+  },
+  "postCreateCommand": "git config core.hooksPath .githooks",
+  "customizations": {
+    "vscode": {
+      "extensions": ["golang.go"]
+    }
+  }
+}

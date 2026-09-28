@@ -30,3 +30,12 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# retrace binary from `go build ./cmd/retrace` at the repo root
+/retrace
+
+# macOS
+.DS_Store
+
+# make build output
+/bin/

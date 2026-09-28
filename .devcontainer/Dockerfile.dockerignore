@@ -1,0 +1,3 @@
+# Build context is the repo root; only send what the Dockerfile COPYs.
+*
+!.golangci-lint-version

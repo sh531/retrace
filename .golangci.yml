@@ -1,0 +1,16 @@
+version: "2"
+
+linters:
+  # standard = errcheck, govet, ineffassign, staticcheck, unused
+  default: standard
+  enable:
+    - bodyclose # Overpass responses must be closed
+    - errorlint # wrapped errors must be checked with errors.Is/As
+    - gosec
+    - noctx # HTTP requests must carry a context.Context
+    - revive
+  settings:
+    gosec:
+      excludes:
+        # Local CLI will read user-supplied photo and GPX paths.
+        - G304
