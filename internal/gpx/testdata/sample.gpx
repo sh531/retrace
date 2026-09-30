@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<gpx xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="1.1" creator="AllTrails.com" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <metadata>
+    <name><![CDATA[Morning hike at Rattlesnake Ledge]]></name>
+    <desc><![CDATA[]]></desc>
+    <link href="http://www.alltrails.com">
+      <text>AllTrails, LLC</text>
+    </link>
+    <bounds minlat="47.4337" minlon="-121.7695" maxlat="47.4346" maxlon="-121.7682"/>
+  </metadata>
+  <trk>
+    <name><![CDATA[Morning hike at Rattlesnake Ledge]]></name>
+    <src>AllTrails</src>
+    <trkseg>
+      <trkpt lat="47.4337" lon="-121.7682">
+        <ele>280.5</ele>
+        <time>2026-09-20T15:00:00Z</time>
+      </trkpt>
+      <trkpt lat="47.4341" lon="-121.7690">
+        <ele>301.2</ele>
+        <time>2026-09-20T15:00:10Z</time>
+      </trkpt>
+    </trkseg>
+    <trkseg>
+      <trkpt lat="47.4346" lon="-121.7695">
+        <ele>322.8</ele>
+        <time>2026-09-20T15:00:20Z</time>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>
