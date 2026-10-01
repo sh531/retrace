@@ -14,3 +14,10 @@ linters:
       excludes:
         # Local CLI will read user-supplied photo and GPX paths.
         - G304
+  exclusions:
+    rules:
+      # Test helpers convert the lengths of small, hard-coded inputs.
+      - path: _test\.go
+        text: G115
+        linters:
+          - gosec

@@ -1,4 +1,22 @@
 // Package gpx parses GPX tracks.
+//
+// GPX is an XML format for GPS data, defined by the GPX 1.1 schema:
+// https://www.topografix.com/GPX/1/1/. A file can hold waypoints (<wpt>),
+// planned routes (<rte>), and recorded tracks (<trk>). retrace reads only
+// tracks, since only a recorded track includes times:
+//
+//	<gpx creator="AllTrails.com">               Track.Creator
+//	  <metadata><name>…</name></metadata>       Track.Name, if <trk> has none
+//	  <trk>
+//	    <name>…</name>                          Track.Name
+//	    <trkseg>
+//	      <trkpt lat="47.43" lon="-121.77">     TrackPoint.Point
+//	        <ele>280.5</ele>                    TrackPoint.ElevationMeters (optional)
+//	        <time>2026-09-20T15:00:00Z</time>   TrackPoint.Time (required)
+//	      </trkpt>
+//
+// [Parse] and [ParseFile] merge all tracks and segments into one [Track],
+// whose [TrackPoint] values are sorted by time.
 package gpx
 
 import (
@@ -35,7 +53,7 @@ type Track struct {
 	Points  []TrackPoint // trackpoints in time order
 }
 
-// ParseFile parses the GPX file at path. See Parse.
+// ParseFile parses the GPX file at path. See [Parse].
 func ParseFile(ctx context.Context, path string) (Track, error) {
 	f, err := os.Open(path)
 	if err != nil {

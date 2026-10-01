@@ -1,4 +1,8 @@
-// Package poi defines points of interest near a photo.
+// Package poi defines points of interest: named OpenStreetMap features near
+// a photo, such as peaks, lakes, and trailheads.
+//
+// Each [POI] records its name, its [Category], and its distance from the photo
+// in metres.
 package poi
 
 // POI is a named OpenStreetMap feature near a photo.
