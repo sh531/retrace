@@ -24,28 +24,92 @@ Both install `retrace` to `$(go env GOPATH)/bin` (usually `~/go/bin`), which nee
 
 > The CLI is still being built; commands and flags may change.
 
-retrace takes a folder of photos and a GPX track (with timestamps) recorded on the same hike.
+retrace takes a folder of JPEG photos and a GPX track (with timestamps) recorded on the same hike. Export HEIC and RAW photos as JPEG first, since browsers can't display RAW and most can't display HEIC. retrace reads the files directly inside the folder, not its subfolders.
 
 ### Finding your camera's offset
 
-If the photos have no GPS, retrace places them on the track by time. `--offset` is how much to add to your camera's clock to get UTC.
+If the photos have no GPS, retrace places them on the track by time. It converts each photo's `DateTimeOriginal` to UTC using the timezone the camera recorded in `OffsetTimeOriginal`. If the camera recorded no timezone, retrace assumes the time is already UTC. The flag `--offset make=duration` then adds a correction for one camera make, matched against the EXIF `Make` tag ignoring case, e.g. `--offset sony=2m30s`. If you don't add an offset for a camera make, there will be no correction. This works for phone pictures, since their clocks set themselves. 
+
+How to determine the --offset duration:
 
 1. With the camera, take a photo of your phone's clock.
-2. Read the camera's time from that photo: `exiftool -DateTimeOriginal photo.jpg`.
-3. Convert the time shown on the phone to UTC, then subtract the camera's time:
-  ```
-   offset = phone time (UTC) − camera time
-  ```
-   For example, the phone shows 08:00:00 PDT, which is 15:00:00 UTC, and the camera recorded 08:07:30:
-   If the camera's time is later than UTC, the offset is negative, e.g. `--offset -5h30m`.
+2. Read the camera's time and timezone from that photo: `exiftool -DateTimeOriginal -OffsetTimeOriginal photo.jpg`.
+3. Convert both times to UTC, then subtract:
+   ```
+   offset = phone time in UTC − camera time in UTC
+   ```
+   For the camera's time in UTC: if it recorded a timezone, convert using that timezone (`-07:00` means 7 hours behind UTC, so add 7 hours). If it recorded no timezone, retrace assumes the time is already UTC, so use it unchanged.
+   For example, the phone shows 08:00:00 PDT, which is 15:00:00 UTC:
+
+   | Camera recorded        | Camera time in UTC | phone time in UTC 15:00:00 − camera time in UTC   |
+   | ---------------------- | ------------------ | ------------------------------------------------- |
+   | 07:57:30 with `-07:00` | 14:57:30           | `--offset sony=2m30s` (camera is behind phone)    |
+   | 08:07:30, no timezone  | 08:07:30           | `--offset sony=6h52m30s`                          |
+   | 08:01:15 with `-07:00` | 15:01:15           | `--offset sony=-1m15s` (camera is ahead of phone) |
+
+   Shortcut: if the camera recorded the same timezone the phone shows, just subtract the two clock times: 08:00:00 − 07:57:30 = 2m30s.
 
 The same offset works for every photo until you change or reset the camera's clock.
 
 ## Design decisions
 
-- **Camera time is a fixed offset from true time.** EXIF `DateTimeOriginal` has no timezone, and a camera clock that is never adjusted doesn't follow travel or daylight savings. retrace reads it as UTC and applies a single `--offset`, the duration to add to camera time to get UTC, which covers both the timezone difference and clock drift. See [Finding your camera's offset](#finding-your-cameras-offset).
-- **A photo's location is optional and all-or-nothing.** `Photo.Location` is a `*Location` holding the point and how it was determined (`exif` or `interpolated`), and is `nil` when the photo couldn't be located. Grouping them means a point can't exist without a source or vice versa. `nil` keeps the zero value (0,0), a real place in the Atlantic, from being plotted by mistake.
-- **Track points need a time; elevation is optional.** Time is what places a photo on the track, so a point without `<time>` fails the GPX file parsing step. The usual cause is exporting a trail's planned route instead of a recorded activity. Elevation is `*float64` and `nil` when `<ele>` is missing, because 0 m is sea level. A zero default would draw a fake drop to sea level in the elevation profile. NaN isn't used because `encoding/json` can't encode it.
+
+
+### Time
+
+**Camera time is a fixed offset per device.**
+
+- EXIF `DateTimeOriginal` has no timezone. Phones record theirs in `OffsetTimeOriginal`, and many cameras record the zone they were set to.
+- A camera clock that is never adjusted doesn't follow travel or daylight saving, and it drifts.
+- retrace converts `DateTimeOriginal` to UTC using the recorded timezone (`OffsetTimeOriginal`), or assumes it is already UTC if there is none. It then adds the `--offset` given for the photo's camera make, covering both a wrong zone and drift. See [Finding your camera's offset](#finding-your-cameras-offset).
+
+**Times are stored in UTC.**
+
+- The recorded offset is only used to work out UTC, so JSON times always end in `Z`.
+- `==` on `time.Time` compares the zone as well as the instant, so with one zone a stray `==` can't give a wrong answer.
+- An unknown time is the zero `time.Time`, not a `nil` pointer, following Go convention: year 1 is never a real photo time.
+
+
+
+### Location
+
+**A photo's location is optional and all-or-nothing.**
+
+- `Photo.Location` is a `*Location` holding the point and how it was determined (`exif` or `interpolated`), or `nil` when the photo couldn't be located.
+- Grouping them means a point can't exist without a source, or vice versa.
+- `nil` keeps the zero value (0,0), a real place in the Atlantic, from being plotted by mistake.
+
+**Some GPS values mean "no fix".**
+
+- A position with `GPSStatus` V ("void") or at exactly (0,0) is treated as missing.
+- (0,0) is a real place, but no hike goes there, and some devices write zeros when they have no fix.
+
+
+
+### GPX tracks
+
+**Track points need a time; elevation is optional.**
+
+- Time is what places a photo on the track, so a point without `<time>` fails parsing. The usual cause is exporting a trail's planned route instead of a recorded activity.
+- Elevation is `*float64` and `nil` when `<ele>` is missing, because 0 m is sea level: a zero default would draw a fake drop in the elevation profile. NaN isn't used because `encoding/json` can't encode it.
+
+
+
+### Photos and EXIF
+
+**JPEG only.**
+
+- The page has to display the photos, and browsers can't show RAW and mostly can't show HEIC, so they have to be exported as JPEG anyway.
+- HEIC wraps the same TIFF-format EXIF block, so supporting it later means finding that block in a different container.
+
+**A hand-written EXIF reader.**
+
+- `internal/exif` reads just the [tags](https://exiftool.org/TagNames/EXIF.html) retrace uses, with the standard library (`encoding/binary`).
+- Considered: [rwcarlsen/goexif](https://github.com/rwcarlsen/goexif) (last commit April 2019), [dsoprea/go-exif](https://github.com/dsoprea/go-exif) (last commit August 2023), and [evanoberholster/imagemeta](https://github.com/evanoberholster/imagemeta), which is maintained but brings 7 direct dependencies and support for RAW and HEIC formats retrace doesn't accept. exiftool was ruled out as a runtime dependency because it's an extra install for every user.
+- retrace needs 19 tags from JPEG files, a few hundred lines of standard-library code that can be fuzzed and fully tested, which is less to audit than a dependency tree.
+- The reader checks every offset against the data before following it, and a fuzz test (`FuzzDecode`) checks that malformed files never cause a panic or out-of-range values.
+- How EXIF is laid out inside a JPEG (segments, the TIFF header, image file directories) is explained in the package docs: [`internal/exif/doc.go`](internal/exif/doc.go), or run `go doc ./internal/exif`.
+- exiftool is only used to regenerate the test fixtures, as an independent EXIF writer to check the reader against. Running retrace or its tests doesn't need it.
 
 
 
@@ -59,6 +123,12 @@ retrace/
 │   └── retrace/
 │       └── main.go              # CLI entrypoint (package main)
 ├── internal/                    # supporting packages, importable only within this module
+│   ├── exif/                    # JPEG EXIF reader (standard library only)
+│   │   └── testdata/gen.sh      # regenerates the synthetic fixture JPEGs (needs exiftool)
+│   ├── geo/                     # coordinates and their limits
+│   ├── gpx/                     # GPX track parser
+│   ├── photo/                   # Photo type, listing a photo folder, EXIF → Photo
+│   └── poi/                     # points of interest near a photo
 ├── .devcontainer/
 │   ├── devcontainer.json        # dev container: Go, Git hooks, editor extensions
 │   ├── devcontainer-lock.json   # pinned dev container feature versions

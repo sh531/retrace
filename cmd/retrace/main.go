@@ -1,5 +1,10 @@
-// Command retrace locates hike photos along a GPX track and renders a
-// self-contained HTML map with a photo flythrough.
+// Command retrace places hike photos on the GPX track recorded during the
+// hike and builds a static web page from them: an interactive map with each
+// photo pinned where it was taken, and a flythrough that follows the trail.
+//
+// Photos with EXIF GPS are placed directly; the rest are placed by time,
+// using where the track was when each photo was taken. The CLI is still
+// being built; see the README for usage and status.
 package main
 
 import (
