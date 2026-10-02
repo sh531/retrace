@@ -10,6 +10,8 @@
 //	...
 //	p := photo.FromEXIF(path, m)
 //
+// [EXIFEnricher] does the same as an enrich.Enricher.
+//
 // A photo's [Location] records where it was taken and how that was determined
 // ([SourceEXIF] or [SourceInterpolated]). It is nil when the location is unknown,
 // so a missing location can't be mistaken for (0,0).

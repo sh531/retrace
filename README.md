@@ -53,8 +53,6 @@ The same offset works for every photo until you change or reset the camera's clo
 
 ## Design decisions
 
-
-
 ### Time
 
 **Camera time is a fixed offset per device.**
@@ -69,8 +67,6 @@ The same offset works for every photo until you change or reset the camera's clo
 - `==` on `time.Time` compares the zone as well as the instant, so with one zone a stray `==` can't give a wrong answer.
 - An unknown time is the zero `time.Time`, not a `nil` pointer, following Go convention: year 1 is never a real photo time.
 
-
-
 ### Location
 
 **A photo's location is optional and all-or-nothing.**
@@ -84,16 +80,12 @@ The same offset works for every photo until you change or reset the camera's clo
 - A position with `GPSStatus` V ("void") or at exactly (0,0) is treated as missing.
 - (0,0) is a real place, but no hike goes there, and some devices write zeros when they have no fix.
 
-
-
 ### GPX tracks
 
 **Track points need a time; elevation is optional.**
 
 - Time is what places a photo on the track, so a point without `<time>` fails parsing. The usual cause is exporting a trail's planned route instead of a recorded activity.
 - Elevation is `*float64` and `nil` when `<ele>` is missing, because 0 m is sea level: a zero default would draw a fake drop in the elevation profile. NaN isn't used because `encoding/json` can't encode it.
-
-
 
 ### Photos and EXIF
 
@@ -111,7 +103,17 @@ The same offset works for every photo until you change or reset the camera's clo
 - How EXIF is laid out inside a JPEG (segments, the TIFF header, image file directories) is explained in the package docs: [`internal/exif/doc.go`](internal/exif/doc.go), or run `go doc ./internal/exif`.
 - exiftool is only used to regenerate the test fixtures, as an independent EXIF writer to check the reader against. Running retrace or its tests doesn't need it.
 
+### Enrichment
 
+**Each photo passes through a list of enrichers; photos are processed in parallel.**
+
+- An enricher (`enrich.Enricher`) takes a photo and returns an updated copy: reading EXIF first, then (planned) location and nearby landmarks. They run in order for each photo, since landmarks need the location.
+- One enricher failing doesn't stop the others: its result is discarded, the error is kept with the photo, and the next enricher gets the photo unchanged. So a photo with malformed EXIF is kept, unlocated, with a warning: one bad photo out of 500 shouldn't ruin the run, though a bad GPX file still does.
+- Enrichers take and return a photo value rather than a pointer. If an enricher fails, its returned photo is ignored and the next enricher gets the photo from before. That's only safe if the failed enricher changed nothing but its own copy, and the copy is shallow: `Location` and `NearbyPOIs` point at the same data in both the original and returned photos. So enrichers must assign new values to those fields instead of modifying them.
+- Concurrency uses [`errgroup`](https://pkg.go.dev/golang.org/x/sync/errgroup) from the Go team's `golang.org/x/sync`, whose `SetLimit` caps how many photos are processed at once. Each goroutine writes only its own element of the results slice, so no mutex or channel is needed and results stay in input order.
+- Only cancelling (Ctrl-C) stops a run. Enricher errors never cancel it, so the group is created without `errgroup.WithContext`.
+- It isn't a channel pipeline in the sense of the Go blog's [Pipelines and cancellation](https://go.dev/blog/pipelines) (stages of goroutines connected by channels): enrichers are plain function calls inside one goroutine per photo, since only reading EXIF is slow per photo. Splitting them into stages would add channels to close and cancel without making anything faster.
+- Nearby landmarks (planned) will come from one [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) query per run, covering the area around the track, cached on disk so re-running the same hike (e.g. updating the photos) doesn't query again. A query per photo would mean hundreds of requests, and the public server's usage policy asks for no parallel requests and fewer than 100 queries a day from regularly run apps.
 
 ## Project structure
 
@@ -123,11 +125,12 @@ retrace/
 │   └── retrace/
 │       └── main.go              # CLI entrypoint (package main)
 ├── internal/                    # supporting packages, importable only within this module
+│   ├── enrich/                  # runs enrichers over photos concurrently
 │   ├── exif/                    # JPEG EXIF reader (standard library only)
 │   │   └── testdata/gen.sh      # regenerates the synthetic fixture JPEGs (needs exiftool)
 │   ├── geo/                     # coordinates and their limits
 │   ├── gpx/                     # GPX track parser
-│   ├── photo/                   # Photo type, listing a photo folder, EXIF → Photo
+│   ├── photo/                   # Photo type, listing a photo folder, EXIF enricher
 │   └── poi/                     # points of interest near a photo
 ├── .devcontainer/
 │   ├── devcontainer.json        # dev container: Go, Git hooks, editor extensions
@@ -148,11 +151,7 @@ retrace/
 └── README.md
 ```
 
-
-
 ## Development
-
-
 
 ### Dev container (recommended)
 
@@ -165,8 +164,6 @@ The repo includes a dev container with Go 1.27.1 and the Git hooks pre-configure
   npx --yes @devcontainers/cli exec --workspace-folder . bash
   ```
 
-
-
 ### Local
 
 Requires Go 1.27.1+ and golangci-lint (version in `.golangci-lint-version`, [install docs](https://golangci-lint.run/docs/welcome/install/local/)). Point Git at the shared hooks so tidy, gofmt, vet, and lint checks run before each commit:
@@ -174,8 +171,6 @@ Requires Go 1.27.1+ and golangci-lint (version in `.golangci-lint-version`, [ins
 ```sh
 git config core.hooksPath .githooks
 ```
-
-
 
 ### Build and test
 

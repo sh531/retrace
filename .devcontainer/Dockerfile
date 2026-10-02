@@ -1,6 +1,6 @@
 FROM mcr.microsoft.com/devcontainers/base:bookworm
 
-# exiftool backs the tag-import enricher (XMP dc:subject / IPTC Keywords).
+# exiftool regenerates the EXIF test fixtures (internal/exif/testdata/gen.sh).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libimage-exiftool-perl \
     && rm -rf /var/lib/apt/lists/*
