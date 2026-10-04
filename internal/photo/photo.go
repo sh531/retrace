@@ -13,7 +13,7 @@
 // [EXIFEnricher] does the same as an enrich.Enricher.
 //
 // A photo's [Location] records where it was taken and how that was determined
-// ([SourceEXIF] or [SourceInterpolated]). It is nil when the location is unknown,
+// ([SourceEXIF], [SourceInterpolated], or [SourceTrackEnd]). It is nil when the location is unknown,
 // so a missing location can't be mistaken for (0,0).
 package photo
 
@@ -30,39 +30,43 @@ type LocationSource string
 
 // Location sources.
 const (
-	SourceEXIF         LocationSource = "exif"
-	SourceInterpolated LocationSource = "interpolated"
+	SourceEXIF         LocationSource = "exif"         // the photo's EXIF GPS
+	SourceInterpolated LocationSource = "interpolated" // on the track, between the points before and after the photo
+	SourceTrackEnd     LocationSource = "track_end"    // the track's first or last point, for a photo taken before or after it
 )
 
 // Location is where a photo was taken and how that was determined.
 type Location struct {
-	Point  geo.Point
-	Source LocationSource
+	Point            geo.Point
+	Source           LocationSource
+	TimeFromTrackEnd time.Duration // for SourceTrackEnd, the photo's time minus the track end's: negative before the start, positive after the end; otherwise 0
 }
 
 // Photo is an image and what retrace learns about it.
 type Photo struct {
-	Path        string
-	Time        time.Time // when the photo was taken, in UTC; zero when unknown
-	Location    *Location // nil when the photo has no location
-	Camera      exif.Camera
-	Lens        string
-	Settings    exif.Settings
-	Orientation int // EXIF orientation 1–8; 0 (unknown) and 1 both mean upright
-	NearbyPOIs  []poi.POI
-	Tags        []string
+	Path           string
+	Time           time.Time      // when the photo was taken, in UTC; zero when unknown
+	RecordedOffset *time.Duration // the timezone the camera recorded (OffsetTimeOriginal); nil when it recorded none
+	Location       *Location      // nil when the photo has no location
+	Camera         exif.Camera
+	Lens           string
+	Settings       exif.Settings
+	Orientation    int // EXIF orientation 1–8; 0 (unknown) and 1 both mean upright
+	NearbyPOIs     []poi.POI
 }
 
 // FromEXIF returns the photo at path with what its EXIF says. Time is the
-// camera's time before its --offset is added; Location is set from EXIF GPS.
+// camera's time converted to UTC, before the locate package adds the camera's
+// offset. Location is set from EXIF GPS.
 func FromEXIF(path string, m exif.Metadata) Photo {
 	p := Photo{
-		Path:        path,
-		Time:        m.Time,
-		Camera:      m.Camera,
-		Lens:        m.Lens,
-		Settings:    m.Settings,
-		Orientation: m.Orientation,
+		Path:           path,
+		Time:           m.Time,
+		RecordedOffset: m.TimeOffset,
+		Camera:         m.Camera,
+		Lens:           m.Lens,
+		Settings:       m.Settings,
+		Orientation:    m.Orientation,
 	}
 	if m.GPS != nil {
 		p.Location = &Location{Point: *m.GPS, Source: SourceEXIF}

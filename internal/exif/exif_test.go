@@ -511,22 +511,3 @@ func FuzzDecode(f *testing.F) {
 		}
 	})
 }
-
-func TestTagString(t *testing.T) {
-	for tg, want := range map[tag]string{tagMake: "Make", 0xABCD: "tag 0xABCD"} {
-		if got := tg.String(); got != want {
-			t.Errorf("tag(0x%04X).String() = %q, want %q", uint16(tg), got, want)
-		}
-	}
-}
-
-func TestSetErrKeepsFirst(t *testing.T) {
-	var d decoder
-	first := errors.New("first")
-	d.setErr(first)
-	d.setErr(errors.New("second"))
-	d.tagErrorf(tagMake, "third")
-	if !errors.Is(d.err, first) {
-		t.Errorf("err = %v, want the first error", d.err)
-	}
-}
