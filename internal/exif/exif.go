@@ -20,6 +20,11 @@ type Camera struct {
 	Make, Model string
 }
 
+// String returns "Make Model", e.g. "SONY ILCE-9", or "" if both are empty.
+func (c Camera) String() string {
+	return strings.TrimSpace(c.Make + " " + c.Model)
+}
+
 // Settings are the camera settings a photo was taken with. Zero means unknown.
 type Settings struct {
 	FocalLength          float64 // mm, actual (not 35mm-equivalent)

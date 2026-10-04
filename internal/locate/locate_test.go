@@ -28,7 +28,7 @@ func offsetsFor(byCamera map[exif.Camera]time.Duration) Offsets {
 	var o Offsets
 	o.byCamera = make(map[exif.Camera]offset)
 	for c, d := range byCamera {
-		o.byCamera[c] = offset{duration: d, referencePhoto: cameraName(c) + ".jpg"}
+		o.byCamera[c] = offset{duration: d, referencePhoto: c.String() + ".jpg"}
 	}
 	return o
 }

@@ -22,9 +22,54 @@ Both install `retrace` to `$(go env GOPATH)/bin` (usually `~/go/bin`), which nee
 
 ## Usage
 
-> The CLI is still being built; commands and flags may change.
+> retrace is still being built: it writes the page's data (`retrace.json`), and the map page itself comes next.
 
-retrace takes a folder of JPEG photos and a GPX track (with timestamps) recorded on the same hike. Export HEIC and RAW photos as JPEG first, since browsers can't display RAW and most can't display HEIC. retrace reads the files directly inside the folder, not its subfolders.
+retrace takes a directory of JPEG photos and a GPX track (with timestamps) recorded on the same hike. Export HEIC and RAW photos as JPEG first, since browsers can't display RAW and most can't display HEIC. retrace reads the files directly inside the photos directory, not its subdirectories.
+
+```sh
+# Phone photos: the clock sets itself, so no offset is needed
+retrace -photos ~/Pictures/enchantments -gpx enchantments.gpx
+
+# Camera photos, where the camera's clock is 2m30s behind the phone
+retrace -photos ~/Pictures/enchantments -gpx enchantments.gpx \
+  -offset ~/Pictures/enchantments/DSC00042.jpg=2m30s
+
+# Phone and camera photos together, written to another directory
+# (the offset applies only to the camera that took DSC00042.jpg)
+retrace -photos ~/Pictures/enchantments -gpx enchantments.gpx \
+  -offset ~/Pictures/enchantments/DSC00042.jpg=2m30s -output ~/Sites/enchantments
+
+# List the flags
+retrace -h
+```
+
+| Flag                     | Meaning                                                                                                                                                                                                 |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-photos dir`            | Directory of JPEG photos from the hike (required).                                                                                                                                                      |
+| `-gpx file`              | GPX track recorded during the hike (required).                                                                                                                                                          |
+| `-offset photo=duration` | Corrects the clock of the camera that took `photo`, a path relative to the current directory. Repeatable, once per camera; see [Finding your camera's offset](#finding-your-cameras-offset) (optional). |
+| `-output dir`            | Where to write the page, default `retrace-out`. It must not exist yet or be empty, so retrace never overwrites anything; delete it to run again.                                                        |
+
+retrace keeps going when a photo can't be read or located, and reports it. After the warnings, it prints one line per camera saying how its photos were timed and located, leaving out zero counts. It exits with 0 on success, 1 on an error, and 2 for a mistake in the command line.
+
+```
+level=WARN msg="no capture time or GPS in its EXIF, so it can't be located" photo=photos/scan.jpg
+level=INFO msg=camera camera="Apple iPhone 13 Pro" total_photos=12 recorded_offsets=-07:00 located_by_exif=12
+level=INFO msg=camera camera="SONY ILCE-9" total_photos=40 recorded_offsets=-07:00 applied_offset=2m30s located_by_track=38 located_at_track_end=2 max_time_from_track_end=18m28s
+level=INFO msg=camera camera="none in EXIF" total_photos=1 unlocated=1
+level=INFO msg=done photos=53 output=retrace-out
+```
+
+| Key | Meaning |
+| --- | --- |
+| `recorded_offsets` | Timezones the camera recorded (`OffsetTimeOriginal`), used to convert its times to UTC. |
+| `assumed_utc` | Photos with no recorded timezone, whose times were taken as UTC. |
+| `applied_offset` | The `-offset` added to this camera's times. |
+| `located_by_exif` | Photos placed by their own EXIF GPS. |
+| `located_by_track` | Photos placed on the track by time. |
+| `located_at_track_end` | Photos taken before the track started or after it ended, placed at its nearest end. |
+| `max_time_from_track_end` | The furthest of those from the track, in time. Hours usually means the camera's `-offset` is wrong. |
+| `unlocated` | Photos with neither GPS nor a time, so they couldn't be placed. |
 
 ### Finding your camera's offset
 
@@ -62,7 +107,7 @@ config:
     wrappingWidth: 400
 ---
 flowchart TD
-    jpegs(["JPEG photos in the photos folder"])
+    jpegs(["JPEG photos in the photos directory"])
     gpxFile(["GPX file"])
     refPhotos(["Reference photos given with --offset"])
 
@@ -191,8 +236,9 @@ retrace/
 │   ├── geo/                     # coordinates and their limits
 │   ├── gpx/                     # GPX track parser, position at a time
 │   ├── locate/                  # per-camera clock offsets, locating photos on the track
-│   ├── photo/                   # Photo type, listing a photo folder, EXIF enricher
-│   └── poi/                     # points of interest near a photo
+│   ├── photo/                   # Photo type, listing a photo directory, EXIF enricher
+│   ├── poi/                     # points of interest near a photo (planned)
+│   └── site/                    # output directory: the page's JSON data
 ├── .devcontainer/
 │   ├── devcontainer.json        # dev container: Go, Git hooks, editor extensions
 │   ├── devcontainer-lock.json   # pinned dev container feature versions
@@ -240,4 +286,3 @@ make check              # everything CI runs
 make build              # build to bin/retrace
 go run ./cmd/retrace    # run without installing
 ```
-

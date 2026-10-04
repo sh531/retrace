@@ -61,6 +61,15 @@ func Run(ctx context.Context, photos []photo.Photo, enrichers []Enricher, worker
 	return results, nil
 }
 
+// Photos returns the photo from each result, in order.
+func Photos(results []Result) []photo.Photo {
+	photos := make([]photo.Photo, len(results))
+	for i, r := range results {
+		photos[i] = r.Photo
+	}
+	return photos
+}
+
 // enrichOne passes p through each enricher in order. Its error is non-nil
 // only if ctx is cancelled.
 func enrichOne(ctx context.Context, p photo.Photo, enrichers []Enricher) (Result, error) {

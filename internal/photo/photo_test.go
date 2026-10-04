@@ -13,7 +13,7 @@ import (
 	"github.com/sh531/retrace/internal/geo"
 )
 
-// touch creates empty files and folders (names ending in "/") under dir.
+// touch creates empty files and directories (names ending in "/") under dir.
 func touch(t *testing.T, dir string, names ...string) {
 	t.Helper()
 	for _, name := range names {

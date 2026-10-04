@@ -8,11 +8,11 @@ import (
 	"strings"
 )
 
-// ErrNoPhotos is returned when a folder has no photos retrace can read.
+// ErrNoPhotos is returned when a directory has no photos retrace can read.
 var ErrNoPhotos = errors.New("no .jpg or .jpeg files (HEIC and RAW aren't supported; export as JPEG)")
 
 // Find returns the paths of the JPEG files directly inside dir, sorted by
-// name. Subfolders and hidden files (such as macOS "._" files) are skipped.
+// name. Subdirectories and hidden files (such as macOS "._" files) are skipped.
 func Find(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir) // sorted by filename
 	if err != nil {
