@@ -16,7 +16,7 @@ func TestFind(t *testing.T) {
 		"c.jpeg", "a.jpg", "b.JPG", "d.JPEG", // any case, returned sorted
 		"._a.jpg", ".hidden.jpg", // hidden, e.g. macOS AppleDouble files
 		"e.heic", "f.ARW", "notes.txt", "a.jpg.xmp", // not JPEG
-		"folder.jpg/", "sub/", "sub/g.jpg", // subfolders aren't searched
+		"directory.jpg/", "sub/", "sub/g.jpg", // subdirectories aren't searched
 	)
 
 	got, err := Find(dir)
@@ -45,7 +45,7 @@ func TestFindErrors(t *testing.T) {
 		}
 	})
 
-	t.Run("missing folder", func(t *testing.T) {
+	t.Run("missing directory", func(t *testing.T) {
 		dir := filepath.Join(t.TempDir(), "does-not-exist")
 		_, err := Find(dir)
 		if !errors.Is(err, fs.ErrNotExist) {

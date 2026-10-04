@@ -511,3 +511,20 @@ func FuzzDecode(f *testing.F) {
 		}
 	})
 }
+
+func TestCameraString(t *testing.T) {
+	tests := []struct {
+		camera Camera
+		want   string
+	}{
+		{Camera{Make: "SONY", Model: "ILCE-9"}, "SONY ILCE-9"},
+		{Camera{Make: "SONY"}, "SONY"},
+		{Camera{Model: "ILCE-9"}, "ILCE-9"},
+		{Camera{}, ""},
+	}
+	for _, tt := range tests {
+		if got := tt.camera.String(); got != tt.want {
+			t.Errorf("%#v.String() = %q, want %q", tt.camera, got, tt.want)
+		}
+	}
+}

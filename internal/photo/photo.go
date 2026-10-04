@@ -1,7 +1,7 @@
 // Package photo defines [Photo], a photo and what retrace learns about it, and
 // finds the photos to process.
 //
-// [Find] lists the JPEG files in a folder, and [FromEXIF] builds a Photo from
+// [Find] lists the JPEG files in a directory, and [FromEXIF] builds a Photo from
 // what [exif.DecodeFile] read from one:
 //
 //	paths, err := photo.Find(dir)

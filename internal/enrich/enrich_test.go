@@ -204,3 +204,13 @@ func TestRunInvalidWorkers(t *testing.T) {
 		}
 	}
 }
+
+func TestPhotos(t *testing.T) {
+	results := []Result{
+		{Photo: photo.Photo{Path: "1.jpg"}},
+		{Photo: photo.Photo{Path: "2.jpg"}, Errs: []error{errors.New("exif: truncated")}},
+	}
+	if diff := cmp.Diff(photosWithPaths("1.jpg", "2.jpg"), Photos(results)); diff != "" {
+		t.Errorf("Photos mismatch (-want +got):\n%s", diff)
+	}
+}

@@ -58,7 +58,7 @@ func (o *Offsets) Set(s string) error {
 		if existing.referencePhoto == path {
 			return fmt.Errorf("%s given twice", path)
 		}
-		return fmt.Errorf("%s is from the same camera (%s) as %s", path, cameraName(c), existing.referencePhoto)
+		return fmt.Errorf("%s is from the same camera (%s) as %s", path, c, existing.referencePhoto)
 	}
 
 	if o.byCamera == nil {
@@ -86,9 +86,4 @@ func (o *Offsets) String() string {
 // For returns the offset for camera c, or 0 if none was set.
 func (o *Offsets) For(c exif.Camera) time.Duration {
 	return o.byCamera[c].duration
-}
-
-// cameraName returns c as "Make Model" for messages.
-func cameraName(c exif.Camera) string {
-	return strings.TrimSpace(c.Make + " " + c.Model)
 }

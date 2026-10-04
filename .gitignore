@@ -39,3 +39,6 @@ go.work.sum
 
 # make build output
 /bin/
+
+# retrace output from running in the repo
+/retrace-out/
