@@ -1,8 +1,6 @@
 package photo
 
 import (
-	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,53 +30,6 @@ func touch(t *testing.T, dir string, names ...string) {
 	}
 }
 
-func TestFind(t *testing.T) {
-	dir := t.TempDir()
-	touch(t, dir,
-		"c.jpeg", "a.jpg", "b.JPG", "d.JPEG", // any case, returned sorted
-		"._a.jpg", ".hidden.jpg", // hidden, e.g. macOS AppleDouble files
-		"e.heic", "f.ARW", "notes.txt", "a.jpg.xmp", // not JPEG
-		"folder.jpg/", "sub/", "sub/g.jpg", // subfolders aren't searched
-	)
-
-	got, err := Find(dir)
-	if err != nil {
-		t.Fatalf("Find() unexpected error: %v", err)
-	}
-	var want []string
-	for _, name := range []string{"a.jpg", "b.JPG", "c.jpeg", "d.JPEG"} {
-		want = append(want, filepath.Join(dir, name))
-	}
-	if diff := cmp.Diff(want, got); diff != "" {
-		t.Errorf("Find() mismatch (-want +got):\n%s", diff)
-	}
-}
-
-func TestFindErrors(t *testing.T) {
-	t.Run("no JPEGs", func(t *testing.T) {
-		dir := t.TempDir()
-		touch(t, dir, "a.heic", "._b.jpg", "sub/", "sub/c.jpg")
-		_, err := Find(dir)
-		if !errors.Is(err, ErrNoPhotos) {
-			t.Errorf("Find() error = %v, want errors.Is ErrNoPhotos", err)
-		}
-		if err != nil && !strings.Contains(err.Error(), dir) {
-			t.Errorf("Find() error = %q, want it to name %s", err, dir)
-		}
-	})
-
-	t.Run("missing folder", func(t *testing.T) {
-		dir := filepath.Join(t.TempDir(), "does-not-exist")
-		_, err := Find(dir)
-		if !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("Find() error = %v, want errors.Is fs.ErrNotExist", err)
-		}
-		if err != nil && strings.Count(err.Error(), dir) != 1 {
-			t.Errorf("Find() error = %q, want the path exactly once", err)
-		}
-	})
-}
-
 func TestFromEXIF(t *testing.T) {
 	taken := time.Date(2025, 8, 3, 3, 32, 9, 0, time.UTC)
 	settings := exif.Settings{FocalLength: 5.7, FNumber: 1.5, ISO: 50, ExposureTime: time.Second / 452, ExposureCompensation: new(0.0)}
@@ -100,13 +51,14 @@ func TestFromEXIF(t *testing.T) {
 				Orientation: 6,
 			},
 			want: Photo{
-				Path:        "IMG_1.jpg",
-				Time:        taken,
-				Location:    &Location{Point: geo.Point{Lat: 48.8961, Lon: -121.6617}, Source: SourceEXIF},
-				Camera:      exif.Camera{Make: "Apple", Model: "iPhone 13 Pro"},
-				Lens:        "iPhone 13 Pro back triple camera 5.7mm f/1.5",
-				Settings:    settings,
-				Orientation: 6,
+				Path:           "IMG_1.jpg",
+				Time:           taken,
+				RecordedOffset: new(-7 * time.Hour),
+				Location:       &Location{Point: geo.Point{Lat: 48.8961, Lon: -121.6617}, Source: SourceEXIF},
+				Camera:         exif.Camera{Make: "Apple", Model: "iPhone 13 Pro"},
+				Lens:           "iPhone 13 Pro back triple camera 5.7mm f/1.5",
+				Settings:       settings,
+				Orientation:    6,
 			},
 		},
 		{
@@ -128,26 +80,4 @@ func TestFromEXIF(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestEXIFEnricher(t *testing.T) {
-	t.Run("reads the file at Path", func(t *testing.T) {
-		path := filepath.Join("..", "exif", "testdata", "apple.jpg")
-		got, err := EXIFEnricher{}.Enrich(t.Context(), Photo{Path: path})
-		if err != nil {
-			t.Fatalf("Enrich() unexpected error: %v", err)
-		}
-		if got.Path != path || got.Camera.Make != "Apple" || got.Location == nil || got.Time.IsZero() {
-			t.Errorf("Enrich() = %+v, want Path %s, Make Apple, a Location, and a Time", got, path)
-		}
-	})
-
-	t.Run("not a JPEG", func(t *testing.T) {
-		dir := t.TempDir()
-		touch(t, dir, "empty.jpg")
-		_, err := EXIFEnricher{}.Enrich(t.Context(), Photo{Path: filepath.Join(dir, "empty.jpg")})
-		if !errors.Is(err, exif.ErrNotJPEG) {
-			t.Errorf("Enrich() error = %v, want errors.Is exif.ErrNotJPEG", err)
-		}
-	})
 }

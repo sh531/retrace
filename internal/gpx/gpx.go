@@ -53,6 +53,46 @@ type Track struct {
 	Points  []TrackPoint // trackpoints in time order
 }
 
+// PointAt returns where the track was at time t, interpolating linearly
+// between the points recorded before and after it. Elevation is nil unless
+// both have one. It reports false if t is before the first point or after the
+// last.
+func (tr Track) PointAt(t time.Time) (TrackPoint, bool) {
+	// i is the first point at or after time t.
+	i, found := slices.BinarySearchFunc(tr.Points, t, func(p TrackPoint, target time.Time) int {
+		return p.Time.Compare(target)
+	})
+	if found {
+		return tr.Points[i], true
+	}
+	// t is before the track starts or after the track ends.
+	if i == 0 || i == len(tr.Points) {
+		return TrackPoint{}, false
+	}
+
+	// before.Time < t < after.Time, so the after minus before duration is never zero.
+	before, after := tr.Points[i-1], tr.Points[i]
+	// fraction is how far t is from before to after: 0 < fraction < 1.
+	// The durations are converted to float64 so the division isn't rounded down.
+	fraction := float64(t.Sub(before.Time)) / float64(after.Time.Sub(before.Time))
+	tp := TrackPoint{
+		Point: geo.Point{
+			Lat: interpolate(before.Point.Lat, after.Point.Lat, fraction),
+			Lon: interpolate(before.Point.Lon, after.Point.Lon, fraction),
+		},
+		Time: t,
+	}
+	if before.ElevationMeters != nil && after.ElevationMeters != nil {
+		tp.ElevationMeters = new(interpolate(*before.ElevationMeters, *after.ElevationMeters, fraction))
+	}
+	return tp, true
+}
+
+// interpolate returns the value the given fraction of the way from a to b.
+func interpolate(a, b, fraction float64) float64 {
+	return a + (b-a)*fraction
+}
+
 // ParseFile parses the GPX file at path. See [Parse].
 func ParseFile(ctx context.Context, path string) (Track, error) {
 	f, err := os.Open(path)

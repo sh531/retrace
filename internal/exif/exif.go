@@ -105,10 +105,10 @@ func (d *decoder) exif(dir ifd, m *Metadata) {
 
 	s := &m.Settings
 	if r := d.rationals(dir, tagFocalLength, 1); r != nil {
-		s.FocalLength = positive(r[0])
+		s.FocalLength = positiveFloat(r[0])
 	}
 	if r := d.rationals(dir, tagFNumber, 1); r != nil {
-		s.FNumber = positive(r[0])
+		s.FNumber = positiveFloat(r[0])
 	}
 	if iso, ok := d.unsigned(dir, tagISO); ok {
 		s.ISO = int(iso)
@@ -146,8 +146,9 @@ func (d *decoder) gps(dir ifd) *geo.Point {
 }
 
 // coord reads a GPS latitude or longitude, stored as degrees, minutes, and
-// seconds plus a reference that gives its sign.
-func (d *decoder) coord(dir ifd, refTag, valTag tag, pos, neg string) (float64, bool) {
+// seconds plus a reference that gives its sign: posRef (e.g. "N") for
+// positive, negRef (e.g. "S") for negative.
+func (d *decoder) coord(dir ifd, refTag, valTag tag, posRef, negRef string) (float64, bool) {
 	dms := d.rationals(dir, valTag, 3)
 	if dms == nil {
 		return 0, false
@@ -161,21 +162,21 @@ func (d *decoder) coord(dir ifd, refTag, valTag tag, pos, neg string) (float64, 
 		v += float64(dms[i].num) / float64(dms[i].den) / scale
 	}
 	switch ref := d.ascii(dir, refTag); ref {
-	case pos:
-	case neg:
+	case posRef:
+	case negRef:
 		v = -v
 	default:
-		d.tagErrorf(refTag, "got %q, want %q or %q", ref, pos, neg)
+		d.tagErrorf(refTag, "got %q, want %q or %q", ref, posRef, negRef)
 		return 0, false
 	}
 	return v, true
 }
 
-// positive returns r as a float64, or 0 (unknown) if r isn't positive.
+// positiveFloat returns r as a float64, or 0 (unknown) if r isn't positive.
 // It checks before dividing because a zero denominator would give Inf or
 // NaN, which encoding/json can't encode. Negative values only come from
 // malformed files.
-func positive(r rational) float64 {
+func positiveFloat(r rational) float64 {
 	if r.num <= 0 || r.den <= 0 {
 		return 0
 	}

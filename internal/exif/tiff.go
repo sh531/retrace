@@ -144,6 +144,7 @@ func (d *decoder) lookup(dir ifd, t tag, want ...fieldType) (field, bool) {
 // values returns the bytes of f's values: inline if they fit in 4 bytes,
 // otherwise at the offset f holds. It returns nil if they run past the end.
 func (d *decoder) values(t tag, f field) []byte {
+	// lookup only returns fields of known types, so f.typ is in fieldTypes.
 	n := uint64(f.count) * fieldTypes[f.typ].size // can't overflow: count < 2^32, size <= 8
 	if n <= 4 {
 		return f.value[:n]

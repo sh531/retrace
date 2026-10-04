@@ -408,3 +408,82 @@ func TestParseFile(t *testing.T) {
 		}
 	})
 }
+
+func TestPointAt(t *testing.T) {
+	at := func(s string) time.Time { return mustParseTime("2026-09-20T15:00:" + s + "Z") }
+	tr := Track{Points: []TrackPoint{
+		{Point: geo.Point{Lat: 47, Lon: -121}, Time: at("00"), ElevationMeters: new(100.0)},
+		{Point: geo.Point{Lat: 48, Lon: -122}, Time: at("10"), ElevationMeters: new(200.0)},
+		{Point: geo.Point{Lat: 48, Lon: -122}, Time: at("20")}, // no elevation
+		{Point: geo.Point{Lat: 49, Lon: -123}, Time: at("20"), ElevationMeters: new(300.0)},
+		{Point: geo.Point{Lat: 50, Lon: -124}, Time: at("30")}, // no elevation
+		{Point: geo.Point{Lat: 51, Lon: -125}, Time: at("40"), ElevationMeters: new(500.0)},
+	}}
+
+	tests := []struct {
+		name   string
+		t      time.Time
+		want   TrackPoint
+		wantOK bool
+	}{
+		{name: "before the track", t: at("00").Add(-time.Nanosecond)},
+		{name: "first point", t: at("00"), want: tr.Points[0], wantOK: true},
+		{
+			name:   "a quarter of the way between points",
+			t:      at("02.5"),
+			want:   TrackPoint{Point: geo.Point{Lat: 47.25, Lon: -121.25}, Time: at("02.5"), ElevationMeters: new(125.0)},
+			wantOK: true,
+		},
+		{name: "exact hit", t: at("10"), want: tr.Points[1], wantOK: true},
+		{
+			name:   "later neighbour without elevation",
+			t:      at("15"),
+			want:   TrackPoint{Point: geo.Point{Lat: 48, Lon: -122}, Time: at("15")},
+			wantOK: true,
+		},
+		{name: "equal times return the first", t: at("20"), want: tr.Points[2], wantOK: true},
+		{
+			name:   "after equal times",
+			t:      at("25"),
+			want:   TrackPoint{Point: geo.Point{Lat: 49.5, Lon: -123.5}, Time: at("25")},
+			wantOK: true,
+		},
+		{
+			name:   "earlier neighbour without elevation",
+			t:      at("35"),
+			want:   TrackPoint{Point: geo.Point{Lat: 50.5, Lon: -124.5}, Time: at("35")},
+			wantOK: true,
+		},
+		{name: "last point", t: at("40"), want: tr.Points[5], wantOK: true},
+		{name: "after the track", t: at("40").Add(time.Nanosecond)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := tr.PointAt(tt.t)
+			if ok != tt.wantOK {
+				t.Fatalf("PointAt(%v) ok = %t, want %t", tt.t, ok, tt.wantOK)
+			}
+			if diff := cmp.Diff(tt.want, got, cmpopts.EquateApprox(0, 1e-9)); diff != "" {
+				t.Errorf("PointAt(%v) mismatch (-want +got):\n%s", tt.t, diff)
+			}
+		})
+	}
+}
+
+func TestPointAtShortTracks(t *testing.T) {
+	t0 := mustParseTime("2026-09-20T15:00:00Z")
+	one := Track{Points: []TrackPoint{{Point: geo.Point{Lat: 47, Lon: -121}, Time: t0}}}
+
+	if got, ok := one.PointAt(t0); !ok || got != one.Points[0] {
+		t.Errorf("single point: PointAt(its time) = %+v, %t; want the point, true", got, ok)
+	}
+	for _, tt := range []time.Time{t0.Add(-time.Second), t0.Add(time.Second)} {
+		if _, ok := one.PointAt(tt); ok {
+			t.Errorf("single point: PointAt(%v) ok = true, want false", tt)
+		}
+	}
+	if _, ok := (Track{}).PointAt(t0); ok {
+		t.Error("empty track: PointAt() ok = true, want false")
+	}
+}
