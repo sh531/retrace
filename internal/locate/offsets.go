@@ -17,7 +17,7 @@ import (
 // the make need no special handling. Two bodies of the same model can't be
 // told apart. The zero value is empty and ready to use.
 //
-// *Offsets satisfies flag.Value, so --offset can be repeated, once per camera.
+// *Offsets satisfies flag.Value, so -offset can be repeated, once per camera.
 type Offsets struct {
 	byCamera map[exif.Camera]offset
 }

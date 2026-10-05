@@ -2,7 +2,7 @@
 //
 // Camera clocks are wrong in a way that stays the same for a device: one that
 // is never adjusted keeps a fixed timezone and drifts. [Offsets] holds a
-// correction per camera, set with --offset photo=duration from a photo the
+// correction per camera, set with -offset photo=duration from a photo the
 // camera took. [Enricher]
 // adds it to each photo's time, then sets the photo's location: EXIF GPS if
 // the photo has it, otherwise where the track was at that time, or the
