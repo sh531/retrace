@@ -1,6 +1,6 @@
 # retrace
 
-Go tool that places hike photos along a GPX track, using each photo's EXIF GPS or its time on the track.  Runs locally and builds a static web page showing the photos on an interactive 2D and 3D map, for revisiting or sharing viewpoints.
+Go tool that places hike photos along a GPX track, using each photo's EXIF GPS or its time on the track. Runs locally and builds a static web page showing the photos on an interactive 2D and 3D map, for revisiting or sharing viewpoints.
 
 **Live example:** [The Enchantments](https://retrace-enchantments.shong88tx.workers.dev/), a page retrace generated from 57 photos and a Strava track. Try the 3D button and the arrow keys, as described in [The HTML page](#the-html-page). Ctrl-drag (or right-drag) tilts and turns the map.
 
@@ -142,7 +142,7 @@ flowchart TD
     outDir(["Output directory: index.html, assets/, photos/"])
 
     Metadata["<b>exif.Metadata</b><br/>Camera exif.Camera<br/>Time time.Time<br/>TimeOffset *time.Duration<br/>GPS *geo.Point<br/>AltitudeMeters *float64"]
-    Photo["<b>photo.Photo</b><br/>Path string<br/>Time time.Time<br/>RecordedOffset *time.Duration<br/>Location *photo.Location<br/>Camera exif.Camera<br/>NearbyPOIs []poi.POI"]
+    Photo["<b>photo.Photo</b><br/>Path string<br/>Time time.Time<br/>RecordedOffset *time.Duration<br/>Location *photo.Location<br/>Camera exif.Camera"]
     Location["<b>photo.Location</b><br/>Point geo.Point<br/>Source LocationSource<br/>TimeFromTrackEnd time.Duration<br/>ElevationMeters *float64"]
     Track["<b>gpx.Track</b><br/>Points []gpx.TrackPoint<br/>each with Point geo.Point, Time time.Time,<br/>ElevationMeters *float64"]
     Offsets["<b>locate.Offsets</b><br/>one time.Duration per exif.Camera"]
@@ -252,14 +252,13 @@ Rounded boxes are retrace's inputs and its output, and the other boxes are struc
 
 **Each photo passes through a list of enrichers; photos are processed in parallel.**
 
-- An enricher (`enrich.Enricher`) takes a photo and returns an updated copy: reading EXIF first, then location, then (planned) nearby landmarks. They run in order for each photo, since landmarks need the location.
+- An enricher (`enrich.Enricher`) takes a photo and returns an updated copy: reading EXIF first, then location. They run in order for each photo, since locating needs the time EXIF provides.
 - One enricher failing doesn't stop the others: its result is discarded, the error is kept with the photo, and the next enricher gets the photo unchanged. So a photo with malformed EXIF is kept, unlocated, with a warning: one bad photo out of 500 shouldn't ruin the run, though a bad GPX file still does.
-- Enrichers take and return a photo value rather than a pointer. If an enricher fails, its returned photo is ignored and the next enricher gets the photo from before. That's only safe if the failed enricher changed nothing but its own copy, and the copy is shallow: `Location` and `NearbyPOIs` point at the same data in both the original and returned photos. So enrichers must assign new values to those fields instead of modifying them.
+- Enrichers take and return a photo value rather than a pointer. If an enricher fails, its returned photo is ignored and the next enricher gets the photo from before. That's only safe if the failed enricher changed nothing but its own copy, and the copy is shallow: pointer fields such as `Location` point at the same data in both the original and returned photos. So enrichers must assign new values to those fields instead of modifying them.
 - Concurrency uses [errgroup](https://pkg.go.dev/golang.org/x/sync/errgroup) from the Go team's `golang.org/x/sync`, whose `SetLimit` caps how many photos are processed at once. Each goroutine writes only its own element of the results slice, so no mutex or channel is needed and results stay in input order.
 - No lock is needed because nothing is shared: the Go [memory model](https://go.dev/ref/mem) only calls it a data race when goroutines access the same memory location, and each goroutine writes a different element. Reading the results after `Wait` is safe because a `sync.WaitGroup`'s `Done` "synchronizes before" `Wait` returns. This is the pattern in errgroup's own `ExampleGroup_parallel`. The tests run `Run` with several workers under `go test -race`, which reports any unsafe write.
 - Only cancelling (Ctrl-C) stops a run. Enricher errors never cancel it, so the group is created without `errgroup.WithContext`.
 - It isn't a channel pipeline in the sense of the Go blog's [Pipelines and cancellation](https://go.dev/blog/pipelines) (stages of goroutines connected by channels): enrichers are plain function calls inside one goroutine per photo, since only reading EXIF is slow per photo. Splitting them into stages would add channels to close and cancel without making anything faster.
-- Nearby landmarks (planned) will come from one [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) query per run, covering the area around the track, cached on disk so re-running the same hike (e.g. updating the photos) doesn't query again. A query per photo would mean hundreds of requests, and the public server's usage policy asks for no parallel requests and fewer than 100 queries a day from regularly run apps.
 
 ### The HTML page
 
@@ -320,7 +319,6 @@ retrace/
 │   ├── gpx/                     # GPX track parser, position at a time
 │   ├── locate/                  # per-camera clock offsets, locating photos on the track
 │   ├── photo/                   # Photo type, listing a photo directory, EXIF enricher
-│   ├── poi/                     # points of interest near a photo (planned)
 │   └── site/                    # output directory: page data, photos without personal information
 │       └── web/                 # the page's HTML template, script, and styles, embedded with go:embed
 ├── .devcontainer/

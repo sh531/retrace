@@ -22,7 +22,6 @@ import (
 
 	"github.com/sh531/retrace/internal/exif"
 	"github.com/sh531/retrace/internal/geo"
-	"github.com/sh531/retrace/internal/poi"
 )
 
 // LocationSource records how a photo's Location was determined.
@@ -53,7 +52,6 @@ type Photo struct {
 	Lens           string
 	Settings       exif.Settings
 	Orientation    int // EXIF orientation 1–8; 0 (unknown) and 1 both mean upright
-	NearbyPOIs     []poi.POI
 }
 
 // FromEXIF returns the photo at path with what its EXIF says. Time is the

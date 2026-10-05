@@ -21,10 +21,10 @@ import (
 // An Enricher adds what it knows to a photo.
 //
 // Enrich returns an updated copy of p. On error, the returned photo is ignored
-// and the next enricher gets p as it was. The copy is shallow: p's Location
-// and NearbyPOIs are shared with the caller's photo, so an enricher must
-// assign new values to them, never modify them in place, or a change made
-// before an error would still appear in the photo that is kept.
+// and the next enricher gets p as it was. The copy is shallow: p's pointer
+// fields, such as Location, are shared with the caller's photo, so an
+// enricher must assign new values to them, never modify them in place, or a
+// change made before an error would still appear in the photo that is kept.
 type Enricher interface {
 	Name() string // short name used in errors, e.g. "exif"
 	Enrich(ctx context.Context, p photo.Photo) (photo.Photo, error)
