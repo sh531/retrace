@@ -1,6 +1,6 @@
 # retrace
 
-Go tool that locates hike photos along a GPX track using EXIF GPS and timestamp interpolation, then tags them with nearby OpenStreetMap landmarks. Runs locally and generates a self-contained HTML map with a photo flythrough for revisiting or sharing viewpoints.
+Go tool that locates hike photos along a GPX track using EXIF GPS and timestamp interpolation. Runs locally and builds a static web page showing them on an interactive 2D and 3D map.
 
 **Live example:** [The Enchantments](https://retrace-enchantments.shong88tx.workers.dev/), a page retrace generated from 57 photos and a Strava track. Try the 3D button and the arrow keys, as described in [The HTML page](#the-html-page).
 
