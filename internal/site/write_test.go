@@ -29,7 +29,7 @@ func TestCheckDir(t *testing.T) {
 			name: "not empty",
 			setup: func(t *testing.T, dir string) {
 				mkdir(t, dir)
-				touch(t, filepath.Join(dir, DataFile))
+				touch(t, filepath.Join(dir, pageFile))
 			},
 			wantErr: "isn't empty",
 		},
@@ -91,11 +91,8 @@ func TestWrite(t *testing.T) {
 			if len(skipped) != 1 || !strings.Contains(skipped[0].Error(), "bad.jpg") {
 				t.Errorf("skipped = %v, want one error about bad.jpg", skipped)
 			}
-			if diff := cmp.Diff([]string{"assets/app.js", "assets/style.css", "index.html", "photos/good.jpg", "retrace.json"}, files(t, dir)); diff != "" {
+			if diff := cmp.Diff([]string{"assets/app.js", "assets/style.css", "index.html", "photos/good.jpg"}, files(t, dir)); diff != "" {
 				t.Errorf("files mismatch (-want +got):\n%s", diff)
-			}
-			if diff := cmp.Diff(want, decode(t, readFile(t, filepath.Join(dir, DataFile)))); diff != "" {
-				t.Errorf("%s mismatch (-want +got):\n%s", DataFile, diff)
 			}
 			page := readFile(t, filepath.Join(dir, pageFile))
 			if diff := cmp.Diff(want, decode(t, inlinedData(t, page))); diff != "" {

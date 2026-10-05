@@ -95,14 +95,7 @@ func TestRunWritesPageData(t *testing.T) {
 		},
 		{File: "c.jpg"},
 	}
-	b, err := os.ReadFile(filepath.Join(h.outputDir, site.DataFile))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got site.Data
-	if err := json.Unmarshal(b, &got); err != nil {
-		t.Fatal(err)
-	}
+	got := pageData(t, h.outputDir)
 	if want := "Photos © 2025 Test Hiker. All rights reserved."; got.Copyright != want {
 		t.Errorf("copyright = %q, want %q", got.Copyright, want)
 	}
@@ -213,6 +206,22 @@ func TestRunLeavesNoOutputOnError(t *testing.T) {
 	if _, err := os.Stat(h.outputDir); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("after a failed run, stat %s: %v; want it not to exist", h.outputDir, err)
 	}
+}
+
+// pageData returns the data inlined in the page in dir.
+func pageData(t *testing.T, dir string) site.Data {
+	t.Helper()
+	page, err := os.ReadFile(filepath.Join(dir, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, after, _ := bytes.Cut(page, []byte(`<script id="data" type="application/json">`))
+	data, _, _ := bytes.Cut(after, []byte("</script>"))
+	var d site.Data
+	if err := json.Unmarshal(data, &d); err != nil {
+		t.Fatalf("decode the page's data: %v", err)
+	}
+	return d
 }
 
 func copyFile(t *testing.T, from, to string) {
