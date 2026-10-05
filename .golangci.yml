@@ -10,8 +10,14 @@ linters:
     - noctx # HTTP requests must carry a context.Context
     - revive
   settings:
+    errcheck:
+      exclude-functions:
+        # Its first error is kept and returned by Flush, which is checked (bufio.go).
+        - (*bufio.Writer).Write
     gosec:
       excludes:
+        # Unchecked errors: errcheck checks the same, and its exclusions above work.
+        - G104
         # Local CLI will read user-supplied photo and GPX paths.
         - G304
   exclusions:

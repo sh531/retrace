@@ -51,6 +51,10 @@ func asciiEntry(t tag, s string) entry {
 	return entry{tag: t, typ: typeASCII, count: uint32(len(s) + 1), data: append([]byte(s), 0)}
 }
 
+func byteEntry(t tag, v byte) entry {
+	return entry{tag: t, typ: typeByte, count: 1, data: []byte{v}}
+}
+
 func shortEntry(t tag, v uint16) entry {
 	return entry{tag: t, typ: typeShort, count: 1, data: be.AppendUint16(nil, v)}
 }
@@ -139,10 +143,11 @@ func TestDecodeFixtures(t *testing.T) {
 					ExposureTime:         time.Second / 452,
 					ExposureCompensation: new(0.0),
 				},
-				Time:        mustParseTime("2025-08-02T20:32:09.236-07:00"),
-				TimeOffset:  new(-7 * time.Hour),
-				GPS:         &geo.Point{Lat: 48.8961, Lon: -121.6617},
-				Orientation: 6,
+				Time:           mustParseTime("2025-08-02T20:32:09.236-07:00"),
+				TimeOffset:     new(-7 * time.Hour),
+				GPS:            &geo.Point{Lat: 48.8961, Lon: -121.6617},
+				AltitudeMeters: new(1650.5),
+				Orientation:    6,
 			},
 		},
 		{
@@ -185,6 +190,16 @@ func TestDecodeFixtures(t *testing.T) {
 			}
 		})
 	}
+}
+
+// withAltitude returns a JPEG whose GPS IFD holds the position (1, 1) and altitude.
+func withAltitude(altitude ...entry) []byte {
+	return withEXIF(subIFD(tagGPSInfo, append([]entry{
+		asciiEntry(tagGPSLatitudeRef, "N"),
+		rationalEntry(tagGPSLatitude, typeRational, 1, 1, 0, 1, 0, 1),
+		asciiEntry(tagGPSLongitudeRef, "E"),
+		rationalEntry(tagGPSLongitude, typeRational, 1, 1, 0, 1, 0, 1),
+	}, altitude...)...))
 }
 
 func TestDecode(t *testing.T) {
@@ -291,6 +306,26 @@ func TestDecode(t *testing.T) {
 			)),
 			want: Metadata{GPS: &geo.Point{Lat: -10.5, Lon: 20.01}},
 		},
+		{
+			name:  "altitude below sea level",
+			input: withAltitude(rationalEntry(tagGPSAltitude, typeRational, 50, 1), byteEntry(tagGPSAltitudeRef, 1)),
+			want:  Metadata{GPS: &geo.Point{Lat: 1, Lon: 1}, AltitudeMeters: new(-50.0)},
+		},
+		{
+			name:  "altitude ref 3 is below sea level too",
+			input: withAltitude(rationalEntry(tagGPSAltitude, typeRational, 25, 2), byteEntry(tagGPSAltitudeRef, 3)),
+			want:  Metadata{GPS: &geo.Point{Lat: 1, Lon: 1}, AltitudeMeters: new(-12.5)},
+		},
+		{
+			name:  "altitude without a ref is above sea level",
+			input: withAltitude(rationalEntry(tagGPSAltitude, typeRational, 3301, 2)),
+			want:  Metadata{GPS: &geo.Point{Lat: 1, Lon: 1}, AltitudeMeters: new(1650.5)},
+		},
+		{
+			name:  "altitude without a position is ignored",
+			input: withEXIF(subIFD(tagGPSInfo, rationalEntry(tagGPSAltitude, typeRational, 100, 1))),
+			want:  Metadata{},
+		},
 	}
 
 	for _, tt := range tests {
@@ -352,8 +387,8 @@ func TestDecodeErrors(t *testing.T) {
 		},
 		{name: "Make isn't ASCII", input: withEXIF(shortEntry(tagMake, 1)), wantErr: "Make: type SHORT, want ASCII"},
 		{name: "unknown type is named by number", input: withEXIF(entry{tag: tagMake, typ: 99, count: 1}), wantErr: "Make: type 99, want ASCII"},
-		{name: "ISO isn't a number", input: withEXIF(subIFD(tagExifOffset, asciiEntry(tagISO, "100"))), wantErr: "ISO: type ASCII, want SHORT or LONG or IFD"},
-		{name: "Orientation isn't a number", input: withEXIF(asciiEntry(tagOrientation, "6")), wantErr: "Orientation: type ASCII, want SHORT or LONG or IFD"},
+		{name: "ISO isn't a number", input: withEXIF(subIFD(tagExifOffset, asciiEntry(tagISO, "100"))), wantErr: "ISO: type ASCII, want BYTE or SHORT or LONG or IFD"},
+		{name: "Orientation isn't a number", input: withEXIF(asciiEntry(tagOrientation, "6")), wantErr: "Orientation: type ASCII, want BYTE or SHORT or LONG or IFD"},
 		{
 			name:    "SHORT values out of range",
 			input:   withEXIF(subIFD(tagExifOffset, entry{tag: tagISO, typ: typeShort, count: 3, data: []byte{0, 0, 0xFF, 0xF0}})),
@@ -369,6 +404,8 @@ func TestDecodeErrors(t *testing.T) {
 		{name: "Exif IFD out of range", input: withEXIF(entry{tag: tagExifOffset, typ: typeLong, count: 1, data: []byte{0, 0, 1, 0}}), wantErr: "IFD offset 256 out of range"},
 
 		// GPS
+		{name: "altitude zero denominator", input: withAltitude(rationalEntry(tagGPSAltitude, typeRational, 1, 0)), wantErr: "GPSAltitude: zero denominator"},
+		{name: "invalid altitude ref", input: withAltitude(rationalEntry(tagGPSAltitude, typeRational, 1, 1), byteEntry(tagGPSAltitudeRef, 4)), wantErr: "GPSAltitudeRef: got 4, want 0 to 3"},
 		{name: "latitude without longitude", input: gps(north, one), wantErr: "GPS has only one of latitude and longitude"},
 		{name: "longitude without latitude", input: gps(east, oneLon), wantErr: "GPS has only one of latitude and longitude"},
 		{name: "too few GPS values", input: gps(north, rationalEntry(tagGPSLatitude, typeRational, 1, 1), east, oneLon), wantErr: "GPSLatitude: 1 values, want 3"},
@@ -466,9 +503,8 @@ func TestDecodeFile(t *testing.T) {
 	})
 }
 
-// FuzzDecode checks that hostile input never panics and that whatever Decode
-// accepts is usable: GPS within limits, no negative or non-finite settings.
-func FuzzDecode(f *testing.F) {
+// addFixtures adds the fixture JPEGs to f's seed corpus.
+func addFixtures(f *testing.F) {
 	fixtures, err := filepath.Glob("testdata/*.jpg")
 	if err != nil {
 		f.Fatal(err)
@@ -480,7 +516,12 @@ func FuzzDecode(f *testing.F) {
 		}
 		f.Add(b)
 	}
+}
 
+// FuzzDecode checks that hostile input never panics and that whatever Decode
+// accepts is usable: GPS within limits, no negative or non-finite settings.
+func FuzzDecode(f *testing.F) {
+	addFixtures(f)
 	f.Fuzz(func(t *testing.T, data []byte) {
 		m, err := Decode(bytes.NewReader(data))
 		if err != nil {
@@ -493,6 +534,9 @@ func FuzzDecode(f *testing.F) {
 			if p.Lat == 0 && p.Lon == 0 {
 				t.Error("GPS (0,0) should be nil")
 			}
+		}
+		if a := m.AltitudeMeters; a != nil && (m.GPS == nil || math.IsInf(*a, 0) || math.IsNaN(*a)) {
+			t.Errorf("AltitudeMeters = %v with GPS %v, want finite and only with a position", *a, m.GPS)
 		}
 		s := m.Settings
 		for name, v := range map[string]float64{"FocalLength": s.FocalLength, "FNumber": s.FNumber} {

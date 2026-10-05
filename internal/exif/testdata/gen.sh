@@ -14,13 +14,14 @@ fixture() {
 	exiftool -q -overwrite_original "$@" "$out"
 }
 
-# Modelled on a real iPhone 13 Pro photo: big-endian, sub-seconds, timezone, GPS,
+# Modelled on a real iPhone 13 Pro photo: big-endian, sub-seconds, timezone, GPS with altitude,
 # held in portrait (Orientation 6: rotate 90° clockwise to display).
 fixture apple.jpg -ExifByteOrder=Big-endian -Orientation#=6 \
 	-Make=Apple -Model='iPhone 13 Pro' -LensModel='iPhone 13 Pro back triple camera 5.7mm f/1.5' \
 	-DateTimeOriginal='2025:08:02 20:32:09' -SubSecTimeOriginal=236 -OffsetTimeOriginal=-07:00 \
 	-ExposureTime=1/452 -FNumber=1.5 -ISO=50 -ExposureCompensation=0 -FocalLength=5.7 \
-	-GPSLatitude=48.8961 -GPSLatitudeRef=N -GPSLongitude=121.6617 -GPSLongitudeRef=W
+	-GPSLatitude=48.8961 -GPSLatitudeRef=N -GPSLongitude=121.6617 -GPSLongitudeRef=W \
+	-GPSAltitude=1650.5 -GPSAltitudeRef#=0
 
 # Modelled on a Lightroom-exported Sony ILCE-9 JPEG: little-endian, timezone, no GPS.
 fixture sony.jpg -ExifByteOrder=Little-endian \

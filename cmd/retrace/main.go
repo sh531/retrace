@@ -3,8 +3,8 @@
 // photo pinned where it was taken, and a flythrough that follows the trail.
 //
 // Photos with EXIF GPS are placed directly; the rest are placed by time,
-// using where the track was when each photo was taken. The CLI is still
-// being built; see the README for usage and status.
+// using where the track was when each photo was taken. The flythrough is
+// still being built; see the README for usage and status.
 //
 // Usage:
 //
@@ -68,10 +68,11 @@ func exitCode(err error) int {
 
 // config is the parsed command line.
 type config struct {
-	photosDir string
-	gpxPath   string
-	offsets   locate.Offsets
-	outputDir string
+	photosDir    string
+	gpxPath      string
+	offsets      locate.Offsets
+	outputDir    string
+	photographer string
 }
 
 // run holds the real entrypoint so it can return errors and be tested
@@ -114,10 +115,16 @@ func run(ctx context.Context, args []string, stderr io.Writer) error {
 	enriched := enrich.Photos(results)
 	report(log, results, locate.Summarize(enriched, cfg.offsets))
 
-	if err = site.Write(cfg.outputDir, site.New(track, enriched)); err != nil {
+	data := site.New(track, enriched)
+	data.Copyright = site.Copyright(cfg.photographer, track)
+	skipped, err := site.Write(cfg.outputDir, cfg.photosDir, data)
+	if err != nil {
 		return err
 	}
-	log.Info("done", "photos", len(enriched), "output", cfg.outputDir)
+	for _, failure := range skipped {
+		log.Warn("photo left off the page", "err", failure)
+	}
+	log.Info("done", "photos", len(data.Photos)-len(skipped), "output", cfg.outputDir)
 	return nil
 }
 
@@ -131,6 +138,7 @@ func parseArgs(args []string, stderr io.Writer) (config, error) {
 	fs.StringVar(&cfg.gpxPath, "gpx", "", "GPX `file` recorded during the hike (required)")
 	fs.Var(&cfg.offsets, "offset", "correct the clock of the camera that took photo by duration, given as `photo=duration`; repeatable, once per camera; e.g. DSC00042.jpg=2m30s")
 	fs.StringVar(&cfg.outputDir, "output", "retrace-out", "`dir` to write the page to; must not exist yet or be empty")
+	fs.StringVar(&cfg.photographer, "photographer", "", "`name` of the photographer, for a copyright notice on the page, e.g. \"Sarah Hong\" (optional)")
 	fs.Usage = func() {
 		// Like flag itself, ignore write errors: there's nowhere left to report them.
 		_, _ = fmt.Fprintln(fs.Output(), "Usage: retrace -photos dir -gpx file [flags]")

@@ -3,9 +3,7 @@ package site
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -36,6 +34,7 @@ func TestNewConvertsTrackAndPhoto(t *testing.T) {
 			Point:            geo.Point{Lat: 47.6, Lon: -120.9},
 			Source:           photo.SourceTrackEnd,
 			TimeFromTrackEnd: 90 * time.Minute,
+			ElevationMeters:  new(2280.4),
 		},
 		Camera: exif.Camera{Make: "SONY", Model: "ILCE-9"},
 		Lens:   "FE 70-200mm F2.8 GM OSS",
@@ -58,11 +57,12 @@ func TestNewConvertsTrackAndPhoto(t *testing.T) {
 			},
 		},
 		Photos: []Photo{{
-			File:     "DSC00042.jpg",
-			Time:     start.Add(time.Hour),
-			Location: &Location{Lat: 47.6, Lon: -120.9, Source: "track_end", SecondsFromTrackEnd: 5400},
-			Camera:   Camera{Make: "SONY", Model: "ILCE-9"},
-			Lens:     "FE 70-200mm F2.8 GM OSS",
+			File:                  "DSC00042.jpg",
+			Time:                  start.Add(time.Hour),
+			RecordedOffsetMinutes: new(-420),
+			Location:              &Location{Lat: 47.6, Lon: -120.9, Source: "track_end", SecondsFromTrackEnd: 5400, ElevationMeters: new(2280.4)},
+			Camera:                Camera{Make: "SONY", Model: "ILCE-9"},
+			Lens:                  "FE 70-200mm F2.8 GM OSS",
 			Settings: Settings{
 				FocalLengthMM:          70,
 				FNumber:                7.1,
@@ -74,6 +74,27 @@ func TestNewConvertsTrackAndPhoto(t *testing.T) {
 	}
 	if diff := cmp.Diff(want, New(track, photos)); diff != "" {
 		t.Errorf("New mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestCredit(t *testing.T) {
+	track := gpx.Track{Points: []gpx.TrackPoint{{Time: start}}}
+	tests := []struct {
+		name, photographer string
+		track              gpx.Track
+		want               string
+	}{
+		{name: "year the track starts", photographer: "Sarah Hong", track: track, want: "Photos © 2024 Sarah Hong. All rights reserved."},
+		{name: "spaces trimmed", photographer: "  Sarah Hong ", track: track, want: "Photos © 2024 Sarah Hong. All rights reserved."},
+		{name: "no photographer", photographer: " ", track: track, want: ""},
+		{name: "no track points", photographer: "Sarah Hong", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Copyright(tt.photographer, tt.track); got != tt.want {
+				t.Errorf("Copyright(%q) = %q, want %q", tt.photographer, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -126,10 +147,11 @@ func TestJSON(t *testing.T) {
 				Photos: []Photo{
 					{File: "unknown.jpg"},
 					{
-						File:     "zero.jpg",
-						Time:     start,
-						Location: &Location{Source: "exif"},
-						Settings: Settings{ExposureCompensationEV: new(0.0)},
+						File:                  "zero.jpg",
+						Time:                  start,
+						RecordedOffsetMinutes: new(0),                                               // UTC
+						Location:              &Location{Source: "exif", ElevationMeters: new(0.0)}, // sea level
+						Settings:              Settings{ExposureCompensationEV: new(0.0)},
 					},
 				},
 			},
@@ -138,7 +160,7 @@ func TestJSON(t *testing.T) {
 				`{"lat":0,"lon":0,"time":"2024-10-12T14:00:01Z","elevation_meters":0}]},` +
 				`"photos":[` +
 				`{"file":"unknown.jpg"},` +
-				`{"file":"zero.jpg","time":"2024-10-12T14:00:00Z","location":{"lat":0,"lon":0,"source":"exif"},"settings":{"exposure_compensation_ev":0}}]}`,
+				`{"file":"zero.jpg","time":"2024-10-12T14:00:00Z","recorded_offset_minutes":0,"location":{"lat":0,"lon":0,"source":"exif","elevation_meters":0},"settings":{"exposure_compensation_ev":0}}]}`,
 		},
 	}
 	for _, tt := range tests {
@@ -151,91 +173,5 @@ func TestJSON(t *testing.T) {
 				t.Errorf("JSON mismatch (-want +got):\n%s", diff)
 			}
 		})
-	}
-}
-
-func TestCheckDir(t *testing.T) {
-	tests := []struct {
-		name    string
-		setup   func(t *testing.T, dir string) // dir doesn't exist yet
-		wantErr string                         // substring; "" means OK
-	}{
-		{name: "missing"},
-		{name: "empty", setup: mkdir},
-		{
-			name: "not empty",
-			setup: func(t *testing.T, dir string) {
-				mkdir(t, dir)
-				writeFile(t, filepath.Join(dir, DataFile))
-			},
-			wantErr: "isn't empty",
-		},
-		{name: "a file", setup: writeFile, wantErr: "not a directory"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := filepath.Join(t.TempDir(), "out")
-			if tt.setup != nil {
-				tt.setup(t, dir)
-			}
-			err := CheckDir(dir)
-			if tt.wantErr == "" && err != nil {
-				t.Errorf("CheckDir: %v", err)
-			}
-			if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
-				t.Errorf("CheckDir error = %v, want one containing %q", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestWrite(t *testing.T) {
-	want := Data{
-		Track:  Track{Points: []TrackPoint{{Lat: 47.5, Lon: -120.8, Time: start}}},
-		Photos: []Photo{{File: "a.jpg", Time: start}},
-	}
-	for _, tt := range []struct {
-		name  string
-		setup func(t *testing.T, dir string) // dir doesn't exist yet
-	}{
-		{name: "missing directory is created"},
-		{name: "empty directory", setup: mkdir},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := filepath.Join(t.TempDir(), "out")
-			if tt.setup != nil {
-				tt.setup(t, dir)
-			}
-			if err := Write(dir, want); err != nil {
-				t.Fatalf("Write: %v", err)
-			}
-
-			b, err := os.ReadFile(filepath.Join(dir, DataFile))
-			if err != nil {
-				t.Fatal(err)
-			}
-			var got Data
-			if err := json.Unmarshal(b, &got); err != nil {
-				t.Fatalf("decode %s: %v", DataFile, err)
-			}
-			if diff := cmp.Diff(want, got); diff != "" {
-				t.Errorf("written data mismatch (-want +got):\n%s", diff)
-			}
-		})
-	}
-}
-
-func mkdir(t *testing.T, dir string) {
-	t.Helper()
-	if err := os.Mkdir(dir, 0o750); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func writeFile(t *testing.T, path string) {
-	t.Helper()
-	//nolint:gosec // G703: path is inside t.TempDir()
-	if err := os.WriteFile(path, nil, 0o600); err != nil {
-		t.Fatal(err)
 	}
 }

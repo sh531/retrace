@@ -15,6 +15,7 @@ type fieldType uint16
 
 // Field types that retrace reads.
 const (
+	typeByte      fieldType = 1
 	typeASCII     fieldType = 2
 	typeShort     fieldType = 3
 	typeLong      fieldType = 4
@@ -28,6 +29,7 @@ var fieldTypes = map[fieldType]struct {
 	name string
 	size uint64
 }{
+	typeByte:      {"BYTE", 1},
 	typeASCII:     {"ASCII", 1},
 	typeShort:     {"SHORT", 2},
 	typeLong:      {"LONG", 4},
@@ -171,10 +173,10 @@ func (d *decoder) ascii(dir ifd, t tag) string {
 	return strings.TrimSpace(string(b))
 }
 
-// unsigned returns the first value of a SHORT (16-bit) or LONG (32-bit)
-// field, and whether dir has it.
+// unsigned returns the first value of a BYTE (8-bit), SHORT (16-bit), or
+// LONG (32-bit) field, and whether dir has it.
 func (d *decoder) unsigned(dir ifd, t tag) (uint32, bool) {
-	f, ok := d.lookup(dir, t, typeShort, typeLong, typeIFD)
+	f, ok := d.lookup(dir, t, typeByte, typeShort, typeLong, typeIFD)
 	if !ok {
 		return 0, false
 	}
@@ -186,7 +188,10 @@ func (d *decoder) unsigned(dir ifd, t tag) (uint32, bool) {
 	if b == nil {
 		return 0, false
 	}
-	if f.typ == typeShort {
+	switch f.typ {
+	case typeByte:
+		return uint32(b[0]), true
+	case typeShort:
 		return uint32(d.order.Uint16(b)), true
 	}
 	return d.order.Uint32(b), true

@@ -34,6 +34,8 @@ const (
 	tagGPSLatitude     tag = 0x0002
 	tagGPSLongitudeRef tag = 0x0003
 	tagGPSLongitude    tag = 0x0004
+	tagGPSAltitudeRef  tag = 0x0005
+	tagGPSAltitude     tag = 0x0006
 	tagGPSStatus       tag = 0x0009
 )
 
@@ -56,6 +58,8 @@ var tagNames = map[tag]string{
 	tagGPSLatitude:          "GPSLatitude",
 	tagGPSLongitudeRef:      "GPSLongitudeRef",
 	tagGPSLongitude:         "GPSLongitude",
+	tagGPSAltitudeRef:       "GPSAltitudeRef",
+	tagGPSAltitude:          "GPSAltitude",
 	tagGPSStatus:            "GPSStatus",
 }
 

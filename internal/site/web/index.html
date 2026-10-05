@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{with .Track.Name}}{{.}} · {{end}}retrace</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.css"
+        integrity="sha384-uTttxo/aOKbdE5RlD/SPzSDoDmNvGlUYPjONi2MN/b7c9HPSvW07OIuyP7uL6jxK" crossorigin="anonymous">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.js"
+          integrity="sha384-5+cfbwT0iiub6VsQAdn6yz16nr6sDiQoHx6tm4O8OVYXHYOxcffFmCJBL0dgdvGp" crossorigin="anonymous"></script>
+  <!-- Inlined rather than fetched from retrace.json, since fetch fails for a page opened from a file. -->
+  <script id="data" type="application/json">{{.}}</script>
+  <script src="assets/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <div id="map"></div>
+    <div class="carousel" role="group" aria-label="Photos">
+      <button type="button" id="previous" aria-label="Previous photo" disabled>‹</button>
+      <span id="position" aria-live="polite"></span>
+      <button type="button" id="next" aria-label="Next photo">›</button>
+      <div class="toggle" role="group" aria-label="Photo size">
+        <button type="button" data-size="s">S</button><button type="button" data-size="m">M</button><button type="button" data-size="l">L</button>
+      </div>
+    </div>
+  </main>
+  <aside>
+    <header>
+      <h1>{{or .Track.Name "Untitled hike"}}</h1>
+      <p id="stats"></p>
+      {{with .Track.Creator}}<p class="muted">Recorded with {{.}}</p>{{end}}
+      {{with .Copyright}}<p class="muted">{{.}}</p>{{end}}
+      <div class="row">
+        <ul class="legend">
+          <li><span class="pin pin-exif"></span> Photo's GPS</li>
+          <li><span class="pin pin-interpolated"></span> On the track by time</li>
+          <li><span class="pin pin-track_end"></span> Before or after the track</li>
+        </ul>
+        <div class="toggle" role="group" aria-label="Units">
+          <button type="button" data-units="metric">km</button><button type="button" data-units="imperial">mi</button>
+        </div>
+      </div>
+    </header>
+    <ol id="photos" class="photos"></ol>
+    <section id="unlocated" hidden>
+      <h2>Not on the map</h2>
+      <p class="muted">retrace found no GPS or capture time in these photos.</p>
+      <ol class="photos"></ol>
+    </section>
+  </aside>
+</body>
+</html>

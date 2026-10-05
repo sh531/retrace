@@ -44,7 +44,7 @@ func (e Enricher) Enrich(_ context.Context, p photo.Photo) (photo.Photo, error) 
 		return p, nil // EXIF GPS is more accurate than the track
 	}
 	if tp, ok := e.Track.PointAt(p.Time); ok {
-		p.Location = &photo.Location{Point: tp.Point, Source: photo.SourceInterpolated}
+		p.Location = &photo.Location{Point: tp.Point, Source: photo.SourceInterpolated, ElevationMeters: tp.ElevationMeters}
 		return p, nil
 	}
 	if end, ok := e.trackEndFor(p.Time); ok {
@@ -52,6 +52,7 @@ func (e Enricher) Enrich(_ context.Context, p photo.Photo) (photo.Photo, error) 
 			Point:            end.Point,
 			Source:           photo.SourceTrackEnd,
 			TimeFromTrackEnd: p.Time.Sub(end.Time), // negative before the start
+			ElevationMeters:  end.ElevationMeters,
 		}
 	}
 	return p, nil
