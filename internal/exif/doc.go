@@ -1,8 +1,13 @@
-// Package exif reads camera metadata from the EXIF block of JPEG files.
+// Package exif reads camera metadata from the EXIF block of JPEG files, and
+// removes metadata from JPEGs before they are published.
 //
 // [Decode] and [DecodeFile] return a [Metadata]: camera, lens, settings,
 // orientation, the time the photo was taken (in UTC), and GPS position.
 // They read only the tags retrace uses and stop before the image data.
+//
+// [StripMetadata] copies a JPEG without its metadata or anything appended to
+// it, so photos can be published without personal information such as their
+// GPS position or camera serial number.
 //
 // # Layout
 //
@@ -29,6 +34,7 @@
 //   - exif.go, tags.go: what the tags mean. IFD0 holds Make, Model, and
 //     Orientation, plus pointers to the Exif IFD (times, exposure, lens)
 //     and the GPS IFD (latitude, longitude, status).
+//   - strip.go: copies a JPEG segment by segment, dropping metadata.
 //
 // # Image file directories
 //

@@ -466,9 +466,8 @@ func TestDecodeFile(t *testing.T) {
 	})
 }
 
-// FuzzDecode checks that hostile input never panics and that whatever Decode
-// accepts is usable: GPS within limits, no negative or non-finite settings.
-func FuzzDecode(f *testing.F) {
+// addFixtures adds the fixture JPEGs to f's seed corpus.
+func addFixtures(f *testing.F) {
 	fixtures, err := filepath.Glob("testdata/*.jpg")
 	if err != nil {
 		f.Fatal(err)
@@ -480,7 +479,12 @@ func FuzzDecode(f *testing.F) {
 		}
 		f.Add(b)
 	}
+}
 
+// FuzzDecode checks that hostile input never panics and that whatever Decode
+// accepts is usable: GPS within limits, no negative or non-finite settings.
+func FuzzDecode(f *testing.F) {
+	addFixtures(f)
 	f.Fuzz(func(t *testing.T, data []byte) {
 		m, err := Decode(bytes.NewReader(data))
 		if err != nil {
