@@ -1,8 +1,8 @@
 # retrace
 
-Go tool that locates hike photos along a GPX track using EXIF GPS and timestamp interpolation, then tags them with nearby OpenStreetMap landmarks. Runs locally and generates a self-contained HTML map with a photo flythrough for revisiting or sharing viewpoints.
+Go tool that places hike photos along a GPX track, using each photo's EXIF GPS or its time on the track.  Runs locally and builds a static web page showing the photos on an interactive 2D and 3D map, for revisiting or sharing viewpoints.
 
-**Live example:** [The Enchantments](https://retrace-enchantments.shong88tx.workers.dev/), a page retrace generated from 57 photos and a Strava track. Try the 3D button and the arrow keys, as described in [The HTML page](#the-html-page).
+**Live example:** [The Enchantments](https://retrace-enchantments.shong88tx.workers.dev/), a page retrace generated from 57 photos and a Strava track. Try the 3D button and the arrow keys, as described in [The HTML page](#the-html-page). Ctrl-drag (or right-drag) tilts and turns the map.
 
 ## Motivation
 
@@ -61,7 +61,6 @@ retrace -h
 | `-output dir`            | Where to write the page, default `retrace-out`. It must not exist yet or be empty, so retrace never overwrites anything; delete it to run again.                                                        |
 | `-photographer name`     | Adds a copyright notice to the page, e.g. "Photos © 2024 Sarah Hong. All rights reserved.", dated with the year the hike started (optional).                                                            |
 
-
 retrace keeps going when a photo can't be read or located, and reports it. After the warnings, it prints one line per camera saying how its photos were timed and located, leaving out zero counts. It exits with 0 on success, 1 on an error, and 2 for a mistake in the command line.
 
 ```
@@ -71,7 +70,6 @@ level=INFO msg=camera camera="SONY ILCE-9" total_photos=40 recorded_offsets=-07:
 level=INFO msg=camera camera="none in EXIF" total_photos=1 unlocated=1
 level=INFO msg=done photos=53 output=retrace-out
 ```
-
 
 | Key                       | Meaning                                                                                             |
 | ------------------------- | --------------------------------------------------------------------------------------------------- |
@@ -92,13 +90,12 @@ retrace writes a static site to the `-output` directory. Open its `index.html` i
 retrace-out/
 ├── index.html      # the page, with the track and photo data inlined
 ├── assets/         # the page's script and styles
-├── photos/         # copies of the photos, without personal information
-└── retrace.json    # the same data as the page, for other tools
+└── photos/         # copies of the photos, without personal information
 ```
 
-The page shows the trail on a map with a pin for each photo, and lists the photos by time beside it. Click a pin or a photo in the list to see the photo, when it was taken, the camera settings, and how its pin was placed. Filled pins were placed by the photo's GPS (blue) or on the track by time (orange); hollow pins are photos taken before or after the track, placed at its nearest end. Photos with neither GPS nor a time are listed under "Not on the map". With `-photographer`, the header shows a copyright notice for the photos; see [Design decisions](#the-html-page-1) for why it uses the hike's year. 
+The page shows the trail on a map with a pin for each photo, and lists the photos by time beside it. Click a pin or a photo in the list to see the photo, when it was taken, the camera settings, and how its pin was placed. Filled pins were placed by the photo's GPS (blue) or on the track by time (orange); hollow pins are photos taken before or after the track, placed at its nearest end. Photos with neither GPS nor a time are listed under "Not on the map". With `-photographer`, the header shows a copyright notice for the photos; see [Design decisions](#the-html-page-1) for why it uses the hike's year.
 
-Toggle between S, M, and L to set how large the photo is shown. The 3D button under the zoom buttons tilts the map over the mountains, and 2D flattens it again. Use the arrow keys or buttons on the bottom of the page to step through the photos in time order. Times are shown in the timezone the camera recorded, so they read as they did on the hike wherever the page is viewed. Distances are in kilometres or miles, chosen from the browser's language and switchable on the page. 
+Toggle between S, M, and L to set how large the photo is shown. The 3D button under the zoom buttons tilts the map over the mountains, and 2D flattens it again. Use the arrow keys or buttons on the bottom of the page to step through the photos in time order. Times are shown in the timezone the camera recorded, so they read as they did on the hike wherever the page is viewed. Distances and elevations are metric or imperial, chosen from the browser's language and switchable on the page. Ctrl-drag (or right-drag) tilts and turns the map.
 
 ![3D](./docs/images/3D.png)
 ![2D](./docs/images/2D.png)
@@ -130,7 +127,7 @@ The same offset works for every photo until you change or reset the camera's clo
 
 ## How the data fits together
 
-A few small types carry all of retrace's data. Packages share them instead of converting between their own versions, so a track point's position can become a photo's location as it is.
+A few small types carry all of retrace's data. Packages share them instead of converting between their own versions, so a track point's position can become a photo's location as it is. Only `site` converts them, into the shapes the page reads.
 
 ```mermaid
 ---
@@ -142,7 +139,7 @@ flowchart TD
     jpegs(["JPEG photos in the photos directory"])
     gpxFile(["GPX file"])
     refPhotos(["Reference photos given with -offset"])
-    outDir(["Output directory: index.html, retrace.json, photos/"])
+    outDir(["Output directory: index.html, assets/, photos/"])
 
     Metadata["<b>exif.Metadata</b><br/>Camera exif.Camera<br/>Time time.Time<br/>TimeOffset *time.Duration<br/>GPS *geo.Point<br/>AltitudeMeters *float64"]
     Photo["<b>photo.Photo</b><br/>Path string<br/>Time time.Time<br/>RecordedOffset *time.Duration<br/>Location *photo.Location<br/>Camera exif.Camera<br/>NearbyPOIs []poi.POI"]
@@ -182,7 +179,7 @@ Rounded boxes are retrace's inputs and its output, and the other boxes are struc
 - `photo.Photo` is everything retrace knows about one photo. `photo.FromEXIF` builds it from `exif.Metadata`, renaming `TimeOffset` to `RecordedOffset` so it isn't mistaken for the `-offset` correction. Each enricher takes one and returns an updated copy. Unknown values stay empty instead of using a default that looks real: a zero `Time`, a `nil` `Location`.
 - `photo.Location` (`Point`, `Source`, `TimeFromTrackEnd`, `ElevationMeters`) records where a photo was taken and how that was figured out: `exif`, `interpolated`, or `track_end`. `TimeFromTrackEnd` says how far a `track_end` photo was from the track. `ElevationMeters` comes from the same place as `Point`: EXIF `GPSAltitude`, or the track.
 - `enrich.Result` pairs each finished `photo.Photo` with the errors from enrichers that failed on it, so one bad photo is reported without stopping the run.
-- `site.Data` is what the page shows, built by `site.New` from the track and the enriched photos. Its types are separate from `photo.Photo` and `gpx.Track` because the JSON is a contract with the page's JavaScript: key names carry units (`elevation_meters`, `seconds_from_track_end`), and it leaves out what the page doesn't need. `site.Write` writes it into `index.html` and `retrace.json`, and copies each photo through `exif.StripMetadata`.
+- `site.Data` is what the page shows, built by `site.New` from the track and the enriched photos. Its types are separate from `photo.Photo` and `gpx.Track` because the JSON is a contract with the page's JavaScript: key names carry units (`elevation_meters`, `seconds_from_track_end`), and it leaves out what the page doesn't need. `site.Write` writes it into `index.html` and copies each photo through `exif.StripMetadata`.
 
 ## Design decisions
 
@@ -192,11 +189,11 @@ Rounded boxes are retrace's inputs and its output, and the other boxes are struc
 
 - EXIF `DateTimeOriginal` has no timezone. Phones record theirs in `OffsetTimeOriginal`, and many cameras record the zone they were set to.
 - A camera clock that is never adjusted doesn't follow travel or daylight saving, and it drifts.
-- retrace converts `DateTimeOriginal` to UTC using the recorded timezone (`OffsetTimeOriginal`), or assumes it is already UTC if there is none. It then adds the `-offset` given for the photo's camera, covering both a wrong zone and drift. See [Finding your camera's offset](#finding-your-cameras-offset).
+- So retrace corrects each camera's times with one `-offset`, which covers both a wrong zone and drift; see [Finding your camera's offset](#finding-your-cameras-offset).
 
 **A camera is identified by a photo it took, not by name.**
 
-- `-offset DSC00042.jpg=2m30s` applies to every photo with exactly the same EXIF `Make` and `Model` as DSC00042.jpg. Typing a camera name instead would mean guessing which EXIF strings it stands for: makes can be company names (`NIKON CORPORATION`, `OLYMPUS CORPORATION`), models can repeat the make (`NIKON D850`) or differ from the marketing name (a Sony A9 reports `ILCE-9`). Using the EXIF of the offset photo to compare simplifies the logic. 
+- `-offset DSC00042.jpg=2m30s` applies to every photo with exactly the same EXIF `Make` and `Model` as DSC00042.jpg. Typing a camera name instead would mean guessing which EXIF strings it stands for: makes can be company names (`NIKON CORPORATION`, `OLYMPUS CORPORATION`), models can repeat the make (`NIKON D850`) or differ from the marketing name (a Sony A9 reports `ILCE-9`).
 - There's one offset per camera model (EXIF `Make` and `Model`), since each camera's clock drifts on its own. Two bodies of the same model look the same; telling them apart would mean also matching the EXIF `BodySerialNumber`, which retrace doesn't read: it's a rare case, and exported photos often leave the serial out.
 - A reference photo with neither `Make` nor `Model` is rejected, since it would match every photo with stripped metadata, from any camera.
 - retrace reports reference photos whose camera took none of the photos, which usually means the wrong file was given.
@@ -212,13 +209,13 @@ Rounded boxes are retrace's inputs and its output, and the other boxes are struc
 **A photo's location is optional and all-or-nothing.**
 
 - `Photo.Location` is a `*Location` holding the point and how it was determined (`exif`, `interpolated`, or `track_end`), or `nil` when the photo couldn't be located.
-- Grouping them means a point can't exist without a source, or vice versa.u
+- Grouping them means a point can't exist without a source, or vice versa.
 - `nil` keeps the zero value (0,0), a real place in the Atlantic, from being plotted by mistake.
 
 **EXIF GPS first, then the track.**
 
-- A photo with EXIF GPS keeps it, since the camera's own fix is more accurate than a position worked out from its clock. Otherwise retrace interpolates along the track: it finds the track points recorded just before and after the photo's corrected time and places the photo the same fraction of the way between them, in a straight line. Points are usually a few seconds apart (about 5 s in an AllTrails track, 1 s in a Strava one), so the straight line between two of them stays close to the trail.
-- A photo taken before the track starts or after it ends is placed at the track's nearest end, with source `track_end` and the time between the photo and that point (`TimeFromTrackEnd`), negative before the start and positive after the end. A recording often stops before the photos do (stopped early, or the phone died), and the end of the track is the best guess. The map can show these pins differently and say how far off they are. retrace reports how many per camera and the longest gap, since many photos at the ends, hours away, means the camera's `-offset` is wrong.
+- A photo with EXIF GPS keeps it, since the camera's own fix is more accurate than a position worked out from its clock. Otherwise retrace interpolates along the track: it finds the track points recorded just before and after the photo's corrected time and places the photo the same fraction of the way between them, in a straight line. Points are usually a few seconds apart (about 3 s in an AllTrails track, 1 s in a Strava one), so the straight line between two of them stays close to the trail.
+- A photo taken before the track starts or after it ends is placed at the track's nearest end, with source `track_end` and the time between the photo and that point (`TimeFromTrackEnd`), negative before the start and positive after the end. A recording often stops before the photos do (stopped early, or the phone died), and the end of the track is the best guess. The map shows these pins hollow and says how far off they are. retrace reports how many per camera and the longest gap, since many photos at the ends, hours away, means the camera's `-offset` is wrong.
 - A gap inside the track (e.g. the recording paused during a break) is bridged with a straight line, so photos taken during it may be placed off the trail.
 - A photo with no time stays unlocated: adding the `-offset` to a zero time would turn "unknown" into a fake time.
 - A photo's elevation comes from the same place as its position: EXIF `GPSAltitude` for a photo with GPS, the track interpolated by time, or the track end's. It is unknown, not 0 m, when that source has none.
@@ -233,7 +230,7 @@ Rounded boxes are retrace's inputs and its output, and the other boxes are struc
 **Track points need a time; elevation is optional.**
 
 - Time is what places a photo on the track, so a point without `<time>` fails parsing. The usual cause is exporting a trail's planned route instead of a recorded activity.
-- Elevation is `*float64` and `nil` when `<ele>` is missing, because 0 m is sea level: a zero default would draw a fake drop in the elevation profile. NaN isn't used because `encoding/json` can't encode it.
+- Elevation is `*float64` and `nil` when `<ele>` is missing, because 0 m is sea level: a zero default would look like a real reading. NaN isn't used because `encoding/json` can't encode it.
 
 ### Photos and EXIF
 
@@ -248,10 +245,8 @@ Rounded boxes are retrace's inputs and its output, and the other boxes are struc
 - Considered: [rwcarlsen/goexif](https://github.com/rwcarlsen/goexif) (last commit April 2019), [dsoprea/go-exif](https://github.com/dsoprea/go-exif) (last commit August 2023), and [evanoberholster/imagemeta](https://github.com/evanoberholster/imagemeta), which is maintained but brings 7 direct dependencies and support for RAW and HEIC formats retrace doesn't accept. exiftool was ruled out as a runtime dependency because it's an extra install for every user.
 - retrace needs 19 tags from JPEG files, a few hundred lines of standard-library code that can be fuzzed and fully tested, which is less to audit than a dependency tree.
 - The reader checks every offset against the data before following it, and a fuzz test (`FuzzDecode`) checks that malformed files never cause a panic or out-of-range values.
-- How EXIF is laid out inside a JPEG (segments, the TIFF header, image file directories) is explained in the package docs: `[internal/exif/doc.go](internal/exif/doc.go)`, or run `go doc ./internal/exif`.
+- How EXIF is laid out inside a JPEG (segments, the TIFF header, image file directories) is explained in the package docs: [`internal/exif/doc.go`](internal/exif/doc.go), or run `go doc ./internal/exif`.
 - exiftool is only used to regenerate the test fixtures, as an independent EXIF writer to check the reader against. Running retrace or its tests doesn't need it.
-
-
 
 ### Enrichment
 
@@ -271,7 +266,7 @@ Rounded boxes are retrace's inputs and its output, and the other boxes are struc
 **Published photos keep only what a browser needs to display them.**
 
 - The output directory is meant to be uploaded, and photos carry personal information: GPS position, camera serial number, capture time, edit history, and sometimes a second copy of the image or a motion photo's video.
-- `exif.StripMetadata` copies each photo's image data as it is, without re-encoding, and keeps only the segments a browser needs: the colour profile (ICC), the JFIF and Adobe segments that tell the decoder how colours are encoded, and EXIF `Orientation`, rewritten as an EXIF block holding only that tag.
+- `exif.StripMetadata` copies each photo's image data as it is, without re-encoding, and keeps only the segments a browser needs: the colour profile (ICC), the JFIF and Adobe segments that tell the decoder how colours are encoded, and, when the photo isn't upright, EXIF `Orientation`, rewritten as an EXIF block holding only that tag.
 - Listing what to keep, rather than what to remove, also drops metadata retrace doesn't know about, see exiftool's [JPEG tag list](https://exiftool.org/TagNames/JPEG.html). Anything after the end of the image, such as an Android motion photo's video or an iPhone's HDR gain map, is dropped too.
 - A photo that can't be read or stripped is left off the page with a warning. Originals are never copied.
 
@@ -283,8 +278,8 @@ Rounded boxes are retrace's inputs and its output, and the other boxes are struc
 
 **The data is inlined in the page.**
 
-- `fetch` fails for a page opened from a file, so `index.html` carries the data in a `<script type="application/json">` element. `retrace.json` is written too, for other tools.
-- `html/template` writes the data as JSON with `<`, `>`, and `&` escaped (`\u003c`), so a track name containing `</script>` can't end the element early.
+- `fetch` fails for a page opened from a file, so `index.html` carries the data in a `<script type="application/json">` element, and no separate data file is written.
+- `json.Marshal` escapes `<`, `>`, and `&` (`\u003c`), so a track name containing `</script>` can't end the element early. It also reports encoding errors, which `html/template`'s own escaping would write into the page instead.
 - The page's template, script, and styles are embedded in the binary with `go:embed`. The script is a classic script, not a module, since browsers block module scripts in a page opened from a file.
 
 **MapLibre GL JS and OpenFreeMap tiles.**
@@ -303,7 +298,7 @@ Rounded boxes are retrace's inputs and its output, and the other boxes are struc
 - A GPS reading is off by a few metres, about as far as a hiker moves between points recorded every second. Drawn as recorded, the example Strava track of the Enchantments zigzags, knots up wherever the hiker stood still, and measures 29.1 mi.
 - The page averages each point with its neighbours within 5 seconds, then keeps a point only once it is 2 m from the last one kept. The line follows the trail's curves, most knots disappear, and the photos' pins stay within about a metre of it. The track then measures 20.1 mi, and the page shows the length of the line it draws.
 - Thinning more removes the last knots but pulls the line away from the pins, since hikers stand still where they take photos: at 3 m some pins were 2.7 m off the line.
-- `retrace.json` and the inlined data keep every recorded point, and photos are placed on the recorded track, so only the drawing and the distance change.
+- The page's data keeps every recorded point, and photos are placed on the recorded track, so only the drawing and the distance change.
 
 ## Project structure
 

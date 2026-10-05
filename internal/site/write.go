@@ -18,7 +18,6 @@ import (
 
 // Files and directories in the output directory.
 const (
-	DataFile  = "retrace.json" // the page data, for other tools; the page has its own copy inlined
 	pageFile  = "index.html"
 	assetsDir = "assets"
 	photosDir = "photos"
@@ -32,6 +31,13 @@ var web embed.FS
 // page is the index.html template. It is parsed when the program starts, so
 // a mistake in it fails every test.
 var page = template.Must(template.ParseFS(web, "web/"+pageFile))
+
+// pageData is what the index.html template shows: d's fields, and d encoded
+// as JSON for the page's script.
+type pageData struct {
+	Data
+	JSON template.JS
+}
 
 // CheckDir reports whether dir can take retrace's output: it must not exist
 // yet, or be empty, so nothing is overwritten and no files are left over from
@@ -51,8 +57,8 @@ func CheckDir(dir string) error {
 }
 
 // Write creates dir and writes the page into it: index.html with d inlined,
-// its assets, [DataFile], and d's photos from srcDir with their personal
-// information stripped by [exif.StripMetadata]. A photo that can't be read or
+// its assets, and d's photos from srcDir with their personal information
+// stripped by [exif.StripMetadata]. A photo that can't be read or
 // stripped is left off the page, and its error is returned in skipped. If
 // Write fails, it removes dir. Call [CheckDir] first.
 func Write(dir, srcDir string, d Data) (skipped []error, err error) {
@@ -77,13 +83,15 @@ func Write(dir, srcDir string, d Data) (skipped []error, err error) {
 	if err = os.CopyFS(filepath.Join(dir, assetsDir), assets); err != nil {
 		return nil, fmt.Errorf("write page assets: %w", err)
 	}
-	if err = writeFile(filepath.Join(dir, DataFile), func(w io.Writer) error {
-		return json.NewEncoder(w).Encode(d)
-	}); err != nil {
-		return nil, err
+	// json.Marshal escapes <, >, and & (as \u003c and so on), so the data can't
+	// end its <script> element early. Unlike html/template's own escaping,
+	// which writes an encoding error into the page, it returns the error.
+	data, err := json.Marshal(d)
+	if err != nil {
+		return nil, fmt.Errorf("encode page data: %w", err)
 	}
 	if err = writeFile(filepath.Join(dir, pageFile), func(w io.Writer) error {
-		return page.Execute(w, d)
+		return page.Execute(w, pageData{Data: d, JSON: template.JS(data)}) //nolint:gosec // G203: json.Marshal escaped <, >, and &; TestWrite checks a </script> track name
 	}); err != nil {
 		return nil, err
 	}
