@@ -13,7 +13,7 @@ import (
 // Summary is how photos were timed and located, per camera.
 type Summary struct {
 	Cameras       []CameraSummary // sorted by make, then model
-	UnusedOffsets []string        // reference photos of --offset whose camera took none of the photos, sorted
+	UnusedOffsets []string        // reference photos of -offset whose camera took none of the photos, sorted
 }
 
 // CameraSummary is how the photos from one camera were timed and located.
@@ -22,7 +22,7 @@ type CameraSummary struct {
 	TotalPhotos         int             // count of all photos from this camera
 	RecordedOffsets     []time.Duration // distinct timezones the camera recorded, ascending
 	AssumedUTC          int             // count of photos with a time but no recorded timezone
-	AppliedOffset       time.Duration   // the --offset added for this camera
+	AppliedOffset       time.Duration   // the -offset added for this camera
 	LocatedByEXIF       int             // count of photos located by EXIF GPS
 	LocatedByTrack      int             // count of photos interpolated on the track
 	LocatedAtTrackEnd   int             // count of photos taken before or after the track, so placed at its nearest end

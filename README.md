@@ -1,6 +1,16 @@
 # retrace
 
-Go tool that locates hike photos along a GPX track using EXIF GPS and timestamp interpolation, then tags them with nearby OpenStreetMap landmarks. Generates a self-contained HTML map with a photo flythrough for revisiting or sharing viewpoints.
+Go tool that locates hike photos along a GPX track using EXIF GPS and timestamp interpolation, then tags them with nearby OpenStreetMap landmarks. Runs locally and generates a self-contained HTML map with a photo flythrough for revisiting or sharing viewpoints.
+
+**Live example:** [The Enchantments](https://retrace-enchantments.shong88tx.workers.dev/), a page retrace generated from 57 photos and a Strava track. Try the 3D button and the arrow keys, as described in [The HTML page](#the-html-page).
+
+## Motivation
+
+**retrace** started as a way to combine two of my hobbies: photography and hiking. I love taking photos on the trail and editing them afterward, but I'd often lose track of exactly where a shot was taken. Without GPS enabled on my camera or phone, there was no record to go back to.
+
+I do record my hikes on AllTrails, though. So I built retrace to map my photos back onto that GPX track, matching each photo's timestamp to my position on the trail at that moment. That way I can retrace my steps and revisit a spot, perhaps to try a different photo composition, catch different light, or come back in another season.
+
+Right now it handles the core problem of mapping photo timestamps to trail positions. I'm planning to expand it with richer enrichment next, including nearby points of interest, weather and sunlight conditions at capture time.
 
 ## Install
 
@@ -51,6 +61,7 @@ retrace -h
 | `-output dir`            | Where to write the page, default `retrace-out`. It must not exist yet or be empty, so retrace never overwrites anything; delete it to run again.                                                        |
 | `-photographer name`     | Adds a copyright notice to the page, e.g. "Photos © 2024 Sarah Hong. All rights reserved.", dated with the year the hike started (optional).                                                            |
 
+
 retrace keeps going when a photo can't be read or located, and reports it. After the warnings, it prints one line per camera saying how its photos were timed and located, leaving out zero counts. It exits with 0 on success, 1 on an error, and 2 for a mistake in the command line.
 
 ```
@@ -94,9 +105,9 @@ Toggle between S, M, and L to set how large the photo is shown. The 3D button un
 
 ### Finding your camera's offset
 
-If the photos have no GPS, retrace places them on the track by time. It converts each photo's `DateTimeOriginal` to UTC using the timezone the camera recorded in `OffsetTimeOriginal`. If the camera recorded no timezone, retrace assumes the time is already UTC. The flag `--offset photo=duration` then adds a correction for the camera that took the `photo`, e.g. `--offset DSC00042.jpg=2m30s`: every photo with the same EXIF `Make` and `Model` as DSC00042.jpg gets 2m30s added. Use the clock photo from the steps below, or any other photo from that camera. Repeat the flag once per camera. If you don't add an offset for a camera, there will be no correction. Photos taken by a phone won't need an offset correction since their clocks set themselves.
+If the photos have no GPS, retrace places them on the track by time. It converts each photo's `DateTimeOriginal` to UTC using the timezone the camera recorded in `OffsetTimeOriginal`. If the camera recorded no timezone, retrace assumes the time is already UTC. The flag `-offset photo=duration` then adds a correction for the camera that took the `photo`, e.g. `-offset DSC00042.jpg=2m30s`: every photo with the same EXIF `Make` and `Model` as DSC00042.jpg gets 2m30s added. Use the clock photo from the steps below, or any other photo from that camera. Repeat the flag once per camera. If you don't add an offset for a camera, there will be no correction. Photos taken by a phone won't need an offset correction since their clocks set themselves.
 
-How to determine the --offset duration:
+How to determine the -offset duration:
 
 1. With the camera, take a photo of your phone's clock.
 2. Read the camera's time and timezone from that photo: `exiftool -DateTimeOriginal -OffsetTimeOriginal photo.jpg`.
@@ -107,11 +118,11 @@ How to determine the --offset duration:
    For the camera's time in UTC: if it recorded a timezone, convert using that timezone (`-07:00` means 7 hours behind UTC, so add 7 hours). If it recorded no timezone, retrace assumes the time is already UTC, so use it unchanged.
    For example, the phone shows 08:00:00 PDT, which is 15:00:00 UTC:
 
-  | Camera recorded        | Camera time in UTC | phone time in UTC 15:00:00 − camera time in UTC        |
-  | ---------------------- | ------------------ | ------------------------------------------------------ |
-  | 07:57:30 with `-07:00` | 14:57:30           | `--offset photo.jpg=2m30s` (camera is behind phone)    |
-  | 08:07:30, no timezone  | 08:07:30           | `--offset photo.jpg=6h52m30s`                          |
-  | 08:01:15 with `-07:00` | 15:01:15           | `--offset photo.jpg=-1m15s` (camera is ahead of phone) |
+  | Camera recorded        | Camera time in UTC | phone time in UTC 15:00:00 − camera time in UTC       |
+  | ---------------------- | ------------------ | ----------------------------------------------------- |
+  | 07:57:30 with `-07:00` | 14:57:30           | `-offset photo.jpg=2m30s` (camera is behind phone)    |
+  | 08:07:30, no timezone  | 08:07:30           | `-offset photo.jpg=6h52m30s`                          |
+  | 08:01:15 with `-07:00` | 15:01:15           | `-offset photo.jpg=-1m15s` (camera is ahead of phone) |
 
    Shortcut: if the camera recorded the same timezone the phone shows, just subtract the two clock times: 08:00:00 − 07:57:30 = 2m30s.
 
@@ -130,7 +141,8 @@ config:
 flowchart TD
     jpegs(["JPEG photos in the photos directory"])
     gpxFile(["GPX file"])
-    refPhotos(["Reference photos given with --offset"])
+    refPhotos(["Reference photos given with -offset"])
+    outDir(["Output directory: index.html, retrace.json, photos/"])
 
     Metadata["<b>exif.Metadata</b><br/>Camera exif.Camera<br/>Time time.Time<br/>TimeOffset *time.Duration<br/>GPS *geo.Point<br/>AltitudeMeters *float64"]
     Photo["<b>photo.Photo</b><br/>Path string<br/>Time time.Time<br/>RecordedOffset *time.Duration<br/>Location *photo.Location<br/>Camera exif.Camera<br/>NearbyPOIs []poi.POI"]
@@ -139,6 +151,7 @@ flowchart TD
     Offsets["<b>locate.Offsets</b><br/>one time.Duration per exif.Camera"]
     Result["<b>enrich.Result</b><br/>Photo photo.Photo<br/>Errs []error"]
     Summary["<b>locate.Summary</b><br/>Cameras []locate.CameraSummary<br/>UnusedOffsets []string"]
+    Data["<b>site.Data</b><br/>Track site.Track<br/>Photos []site.Photo<br/>Copyright string"]
 
     jpegs -->|exif.DecodeFile| Metadata
     Metadata -->|photo.FromEXIF| Photo
@@ -151,16 +164,25 @@ flowchart TD
 
     Photo -->|enrich.Run| Result
     Result -->|locate.Summarize| Summary
+
+    Result -->|"site.New, from enrich.Photos"| Data
+    Track -->|site.New| Data
+    Data -->|site.Write| outDir
+    jpegs -->|"exif.StripMetadata, in site.Write"| outDir
+
+    classDef struct text-align:left
+    class Metadata,Photo,Location,Track,Offsets,Result,Summary,Data struct
 ```
 
-Rounded boxes are retrace's inputs and the other boxes are structs. Each solid arrow is labelled with the function that writes the struct it points to; the dotted arrow is a field. How photos pass through the enrichers is described under [Enrichment](#enrichment).
+Rounded boxes are retrace's inputs and its output, and the other boxes are structs. Each solid arrow is labelled with the function that writes the struct it points to; the dotted arrow is a field. How photos pass through the enrichers is described under [Enrichment](#enrichment).
 
 - `geo.Point` (`Lat`, `Lon`) is the only coordinate type. Track points, EXIF GPS, and photo locations all use it, so `locate` copies a `gpx.TrackPoint`'s `Point` straight into a `photo.Location`.
 - `time.Time` is always UTC. `exif` converts camera time when it reads it and `gpx` converts track time when it parses it, so `locate` compares a photo's `Time` with track times directly.
 - `exif.Camera` (`Make`, `Model`) identifies a camera. It's a struct of two strings, so it can be compared with `==` and used as a map key: `locate.Offsets` stores one offset per `exif.Camera`, and `locate.Summarize` groups photos by it.
-- `photo.Photo` is everything retrace knows about one photo. `photo.FromEXIF` builds it from `exif.Metadata`, renaming `TimeOffset` to `RecordedOffset` so it isn't mistaken for the `--offset` correction. Each enricher takes one and returns an updated copy. Unknown values stay empty instead of using a default that looks real: a zero `Time`, a `nil` `Location`.
+- `photo.Photo` is everything retrace knows about one photo. `photo.FromEXIF` builds it from `exif.Metadata`, renaming `TimeOffset` to `RecordedOffset` so it isn't mistaken for the `-offset` correction. Each enricher takes one and returns an updated copy. Unknown values stay empty instead of using a default that looks real: a zero `Time`, a `nil` `Location`.
 - `photo.Location` (`Point`, `Source`, `TimeFromTrackEnd`, `ElevationMeters`) records where a photo was taken and how that was figured out: `exif`, `interpolated`, or `track_end`. `TimeFromTrackEnd` says how far a `track_end` photo was from the track. `ElevationMeters` comes from the same place as `Point`: EXIF `GPSAltitude`, or the track.
 - `enrich.Result` pairs each finished `photo.Photo` with the errors from enrichers that failed on it, so one bad photo is reported without stopping the run.
+- `site.Data` is what the page shows, built by `site.New` from the track and the enriched photos. Its types are separate from `photo.Photo` and `gpx.Track` because the JSON is a contract with the page's JavaScript: key names carry units (`elevation_meters`, `seconds_from_track_end`), and it leaves out what the page doesn't need. `site.Write` writes it into `index.html` and `retrace.json`, and copies each photo through `exif.StripMetadata`.
 
 ## Design decisions
 
@@ -170,11 +192,11 @@ Rounded boxes are retrace's inputs and the other boxes are structs. Each solid a
 
 - EXIF `DateTimeOriginal` has no timezone. Phones record theirs in `OffsetTimeOriginal`, and many cameras record the zone they were set to.
 - A camera clock that is never adjusted doesn't follow travel or daylight saving, and it drifts.
-- retrace converts `DateTimeOriginal` to UTC using the recorded timezone (`OffsetTimeOriginal`), or assumes it is already UTC if there is none. It then adds the `--offset` given for the photo's camera, covering both a wrong zone and drift. See [Finding your camera's offset](#finding-your-cameras-offset).
+- retrace converts `DateTimeOriginal` to UTC using the recorded timezone (`OffsetTimeOriginal`), or assumes it is already UTC if there is none. It then adds the `-offset` given for the photo's camera, covering both a wrong zone and drift. See [Finding your camera's offset](#finding-your-cameras-offset).
 
 **A camera is identified by a photo it took, not by name.**
 
-- `--offset DSC00042.jpg=2m30s` applies to every photo with exactly the same EXIF `Make` and `Model` as DSC00042.jpg. Typing a camera name instead would mean guessing which EXIF strings it stands for: makes can be company names (`NIKON CORPORATION`, `OLYMPUS CORPORATION`), models can repeat the make (`NIKON D850`) or differ from the marketing name (a Sony A9 reports `ILCE-9`). Using the EXIF of the offset photo to compare simplifies the logic. 
+- `-offset DSC00042.jpg=2m30s` applies to every photo with exactly the same EXIF `Make` and `Model` as DSC00042.jpg. Typing a camera name instead would mean guessing which EXIF strings it stands for: makes can be company names (`NIKON CORPORATION`, `OLYMPUS CORPORATION`), models can repeat the make (`NIKON D850`) or differ from the marketing name (a Sony A9 reports `ILCE-9`). Using the EXIF of the offset photo to compare simplifies the logic. 
 - There's one offset per camera model (EXIF `Make` and `Model`), since each camera's clock drifts on its own. Two bodies of the same model look the same; telling them apart would mean also matching the EXIF `BodySerialNumber`, which retrace doesn't read: it's a rare case, and exported photos often leave the serial out.
 - A reference photo with neither `Make` nor `Model` is rejected, since it would match every photo with stripped metadata, from any camera.
 - retrace reports reference photos whose camera took none of the photos, which usually means the wrong file was given.
@@ -196,9 +218,9 @@ Rounded boxes are retrace's inputs and the other boxes are structs. Each solid a
 **EXIF GPS first, then the track.**
 
 - A photo with EXIF GPS keeps it, since the camera's own fix is more accurate than a position worked out from its clock. Otherwise retrace interpolates along the track: it finds the track points recorded just before and after the photo's corrected time and places the photo the same fraction of the way between them, in a straight line. Points are usually a few seconds apart (about 5 s in an AllTrails track, 1 s in a Strava one), so the straight line between two of them stays close to the trail.
-- A photo taken before the track starts or after it ends is placed at the track's nearest end, with source `track_end` and the time between the photo and that point (`TimeFromTrackEnd`), negative before the start and positive after the end. A recording often stops before the photos do (stopped early, or the phone died), and the end of the track is the best guess. The map can show these pins differently and say how far off they are. retrace reports how many per camera and the longest gap, since many photos at the ends, hours away, means the camera's `--offset` is wrong.
+- A photo taken before the track starts or after it ends is placed at the track's nearest end, with source `track_end` and the time between the photo and that point (`TimeFromTrackEnd`), negative before the start and positive after the end. A recording often stops before the photos do (stopped early, or the phone died), and the end of the track is the best guess. The map can show these pins differently and say how far off they are. retrace reports how many per camera and the longest gap, since many photos at the ends, hours away, means the camera's `-offset` is wrong.
 - A gap inside the track (e.g. the recording paused during a break) is bridged with a straight line, so photos taken during it may be placed off the trail.
-- A photo with no time stays unlocated: adding the `--offset` to a zero time would turn "unknown" into a fake time.
+- A photo with no time stays unlocated: adding the `-offset` to a zero time would turn "unknown" into a fake time.
 - A photo's elevation comes from the same place as its position: EXIF `GPSAltitude` for a photo with GPS, the track interpolated by time, or the track end's. It is unknown, not 0 m, when that source has none.
 
 **Some GPS values mean "no fix".**
@@ -291,18 +313,21 @@ The layout follows the Go team's [Organizing a Go module](https://go.dev/doc/mod
 retrace/
 ├── cmd/
 │   └── retrace/
-│       └── main.go              # CLI entrypoint (package main)
+│       ├── main.go              # CLI entrypoint (package main): flags and the run
+│       └── report.go            # warnings and a summary line per camera
+├── docs/
+│   └── images/                  # screenshots for this README
 ├── internal/                    # supporting packages, importable only within this module
 │   ├── enrich/                  # runs enrichers over photos concurrently
-│   ├── exif/                    # JPEG EXIF reader (standard library only)
+│   ├── exif/                    # JPEG EXIF reader and metadata stripping (standard library only)
 │   │   └── testdata/gen.sh      # regenerates the synthetic fixture JPEGs (needs exiftool)
 │   ├── geo/                     # coordinates and their limits
 │   ├── gpx/                     # GPX track parser, position at a time
 │   ├── locate/                  # per-camera clock offsets, locating photos on the track
 │   ├── photo/                   # Photo type, listing a photo directory, EXIF enricher
 │   ├── poi/                     # points of interest near a photo (planned)
-│   └── site/                    # output directory: the page, its data, and the photos without personal information
-│       └── web/                 # the page's HTML template, script, and styles, embedded in the binary
+│   └── site/                    # output directory: page data, photos without personal information
+│       └── web/                 # the page's HTML template, script, and styles, embedded with go:embed
 ├── .devcontainer/
 │   ├── devcontainer.json        # dev container: Go, Git hooks, editor extensions
 │   ├── devcontainer-lock.json   # pinned dev container feature versions
@@ -317,6 +342,7 @@ retrace/
 ├── .golangci-lint-version       # pinned golangci-lint version (Makefile, CI, dev container)
 ├── .golangci.yml                # linter configuration
 ├── go.mod
+├── go.sum                       # dependency checksums
 ├── LICENSE
 ├── Makefile                     # check, build, test, and lint targets
 └── README.md

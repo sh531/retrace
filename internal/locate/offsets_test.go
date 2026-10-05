@@ -148,7 +148,7 @@ func TestOffsetsString(t *testing.T) {
 }
 
 func TestOffsetsFlag(t *testing.T) {
-	// newFlagSet returns a FlagSet with --offset, writing usage and errors to out.
+	// newFlagSet returns a FlagSet with -offset, writing usage and errors to out.
 	newFlagSet := func(o *Offsets, out io.Writer) *flag.FlagSet {
 		fs := flag.NewFlagSet("retrace", flag.ContinueOnError)
 		fs.SetOutput(out)
