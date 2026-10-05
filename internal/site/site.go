@@ -7,14 +7,10 @@
 // page doesn't need.
 //
 // [CheckDir] checks the output directory without changing anything, so a bad
-// one fails before any work; [Write] creates it and writes [DataFile] into it.
+// one fails before any work; [Write] creates it and writes the page into it.
 package site
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"time"
@@ -22,9 +18,6 @@ import (
 	"github.com/sh531/retrace/internal/gpx"
 	"github.com/sh531/retrace/internal/photo"
 )
-
-// DataFile is the name of the JSON file in the output directory.
-const DataFile = "retrace.json"
 
 // Data is everything the page shows.
 type Data struct {
@@ -49,12 +42,13 @@ type TrackPoint struct {
 
 // Photo is a photo and where it was taken.
 type Photo struct {
-	File     string    `json:"file"`              // name in the photos directory
-	Time     time.Time `json:"time,omitzero"`     // corrected, in UTC; omitted when unknown
-	Location *Location `json:"location,omitzero"` // omitted when the photo couldn't be located
-	Camera   Camera    `json:"camera,omitzero"`
-	Lens     string    `json:"lens,omitzero"`
-	Settings Settings  `json:"settings,omitzero"`
+	File                  string    `json:"file"`                             // name in the photos directory
+	Time                  time.Time `json:"time,omitzero"`                    // corrected, in UTC; omitted when unknown
+	RecordedOffsetMinutes *int      `json:"recorded_offset_minutes,omitzero"` // the camera's timezone, in minutes east of UTC, to show local time; omitted when it recorded none
+	Location              *Location `json:"location,omitzero"`                // omitted when the photo couldn't be located
+	Camera                Camera    `json:"camera,omitzero"`
+	Lens                  string    `json:"lens,omitzero"`
+	Settings              Settings  `json:"settings,omitzero"`
 }
 
 // Location is where a photo was taken and how that was determined.
@@ -64,7 +58,8 @@ type Location struct {
 	Source string  `json:"source"` // "exif", "interpolated", or "track_end"
 	// SecondsFromTrackEnd is set for "track_end": negative before the start,
 	// positive after the end.
-	SecondsFromTrackEnd float64 `json:"seconds_from_track_end,omitzero"`
+	SecondsFromTrackEnd float64  `json:"seconds_from_track_end,omitzero"`
+	ElevationMeters     *float64 `json:"elevation_meters,omitzero"` // omitted when unknown; 0 is sea level
 }
 
 // Camera is the device a photo was taken with, as its EXIF names it.
@@ -134,50 +129,17 @@ func newPhoto(p photo.Photo) Photo {
 			ExposureCompensationEV: p.Settings.ExposureCompensation,
 		},
 	}
+	if off := p.RecordedOffset; off != nil {
+		sp.RecordedOffsetMinutes = new(int(off.Minutes()))
+	}
 	if loc := p.Location; loc != nil {
 		sp.Location = &Location{
 			Lat:                 loc.Point.Lat,
 			Lon:                 loc.Point.Lon,
 			Source:              string(loc.Source),
 			SecondsFromTrackEnd: loc.TimeFromTrackEnd.Seconds(),
+			ElevationMeters:     loc.ElevationMeters,
 		}
 	}
 	return sp
-}
-
-// CheckDir reports whether dir can take retrace's output: it must not exist
-// yet, or be empty, so nothing is overwritten and no files are left over from
-// an earlier run. It changes nothing.
-func CheckDir(dir string) error {
-	entries, err := os.ReadDir(dir)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil // Write creates it
-	}
-	if err != nil {
-		return fmt.Errorf("check output directory: %w", err) // os errors include the path
-	}
-	if len(entries) > 0 {
-		return fmt.Errorf("output directory %s isn't empty; delete it or choose another", dir)
-	}
-	return nil
-}
-
-// Write creates dir if it doesn't exist and writes d to [DataFile] in it.
-// Call [CheckDir] first.
-func Write(dir string, d Data) (err error) {
-	err = os.Mkdir(dir, 0o750)
-	if err != nil && !errors.Is(err, os.ErrExist) {
-		return fmt.Errorf("create output directory: %w", err) // os errors include the path
-	}
-
-	f, err := os.Create(filepath.Join(dir, DataFile))
-	if err != nil {
-		return fmt.Errorf("write page data: %w", err)
-	}
-	defer func() { err = errors.Join(err, f.Close()) }() // a failed close can lose written data
-
-	if err = json.NewEncoder(f).Encode(d); err != nil {
-		return fmt.Errorf("write %s: %w", f.Name(), err)
-	}
-	return nil
 }

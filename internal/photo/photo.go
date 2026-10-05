@@ -40,6 +40,7 @@ type Location struct {
 	Point            geo.Point
 	Source           LocationSource
 	TimeFromTrackEnd time.Duration // for SourceTrackEnd, the photo's time minus the track end's: negative before the start, positive after the end; otherwise 0
+	ElevationMeters  *float64      // from the same source as Point: EXIF GPSAltitude or the track; nil when unknown, since 0 is sea level
 }
 
 // Photo is an image and what retrace learns about it.
@@ -69,7 +70,7 @@ func FromEXIF(path string, m exif.Metadata) Photo {
 		Orientation:    m.Orientation,
 	}
 	if m.GPS != nil {
-		p.Location = &Location{Point: *m.GPS, Source: SourceEXIF}
+		p.Location = &Location{Point: *m.GPS, Source: SourceEXIF, ElevationMeters: m.AltitudeMeters}
 	}
 	return p
 }

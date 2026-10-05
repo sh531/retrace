@@ -36,13 +36,14 @@ type Settings struct {
 
 // Metadata is what a photo's EXIF says, before retrace corrects anything.
 type Metadata struct {
-	Camera      Camera
-	Lens        string
-	Settings    Settings
-	Orientation int            // how to rotate or flip the pixels for display, 1–8 as in EXIF spec; 0 (absent or invalid) and 1 both mean upright
-	Time        time.Time      // DateTimeOriginal converted to UTC using OffsetTimeOriginal, or assumed to be UTC without it; zero when missing
-	TimeOffset  *time.Duration // OffsetTimeOriginal; nil when absent, since 0 is a real offset
-	GPS         *geo.Point     // nil when absent, void (GPSStatus V), or exactly (0,0)
+	Camera         Camera
+	Lens           string
+	Settings       Settings
+	Orientation    int            // how to rotate or flip the pixels for display, 1–8 as in EXIF spec; 0 (absent or invalid) and 1 both mean upright
+	Time           time.Time      // DateTimeOriginal converted to UTC using OffsetTimeOriginal, or assumed to be UTC without it; zero when missing
+	TimeOffset     *time.Duration // OffsetTimeOriginal; nil when absent, since 0 is a real offset
+	GPS            *geo.Point     // nil when absent, void (GPSStatus V), or exactly (0,0)
+	AltitudeMeters *float64       // GPSAltitude, negative below sea level; nil when absent or when GPS is nil
 }
 
 // DecodeFile decodes the EXIF metadata of the JPEG file at path. See [Decode].
@@ -87,7 +88,10 @@ func decodeTIFF(data []byte) (Metadata, error) {
 		d.exif(d.ifd(off), &m)
 	}
 	if off, ok := d.unsigned(ifd0, tagGPSInfo); ok {
-		m.GPS = d.gps(d.ifd(off))
+		dir := d.ifd(off)
+		if m.GPS = d.gps(dir); m.GPS != nil {
+			m.AltitudeMeters = d.altitude(dir)
+		}
 	}
 
 	if d.err != nil {
@@ -148,6 +152,31 @@ func (d *decoder) gps(dir ifd) *geo.Point {
 		return nil
 	}
 	return &geo.Point{Lat: lat, Lon: lon}
+}
+
+// altitude reads the GPS altitude in meters, negative below sea level, or
+// returns nil if the GPS IFD has none.
+func (d *decoder) altitude(dir ifd) *float64 {
+	r := d.rationals(dir, tagGPSAltitude, 1)
+	if r == nil {
+		return nil
+	}
+	if r[0].den == 0 {
+		d.tagErrorf(tagGPSAltitude, "zero denominator")
+		return nil
+	}
+	v := float64(r[0].num) / float64(r[0].den)
+	// GPSAltitudeRef is 0 or 2 above sea level and 1 or 3 below (2 and 3 name
+	// a different reference; see exiftool's GPS tags). A missing one is taken as above.
+	switch ref, _ := d.unsigned(dir, tagGPSAltitudeRef); ref {
+	case 0, 2:
+	case 1, 3:
+		v = -v
+	default:
+		d.tagErrorf(tagGPSAltitudeRef, "got %d, want 0 to 3", ref)
+		return nil
+	}
+	return &v
 }
 
 // coord reads a GPS latitude or longitude, stored as degrees, minutes, and

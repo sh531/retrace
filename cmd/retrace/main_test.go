@@ -67,6 +67,7 @@ func TestRunWritesPageData(t *testing.T) {
 	h := newHike(t)
 	// a.jpg's camera: 03:37:16 + 2m44s is exactly the track's last point.
 	args := h.args("-offset", filepath.Join(h.photosDir, "a.jpg")+"=2m44s")
+	writeFile(t, filepath.Join(h.photosDir, "d.jpg"), "not a JPEG") // left off the page
 
 	var stderr bytes.Buffer
 	if err := run(t.Context(), args, &stderr); err != nil {
@@ -79,16 +80,18 @@ func TestRunWritesPageData(t *testing.T) {
 	}
 	want := []site.Photo{
 		{
-			File:     "b.jpg",
-			Time:     apple.Time,
-			Location: &site.Location{Lat: apple.GPS.Lat, Lon: apple.GPS.Lon, Source: "exif"},
-			Camera:   site.Camera{Make: "Apple", Model: "iPhone 13 Pro"},
+			File:                  "b.jpg",
+			Time:                  apple.Time,
+			RecordedOffsetMinutes: new(-420),
+			Location:              &site.Location{Lat: apple.GPS.Lat, Lon: apple.GPS.Lon, Source: "exif", ElevationMeters: new(1650.5)},
+			Camera:                site.Camera{Make: "Apple", Model: "iPhone 13 Pro"},
 		},
 		{
-			File:     "a.jpg",
-			Time:     time.Date(2025, 8, 3, 3, 40, 0, 0, time.UTC),
-			Location: &site.Location{Lat: 47.1, Lon: -121.1, Source: "interpolated"},
-			Camera:   site.Camera{Make: "SONY", Model: "ILCE-9"},
+			File:                  "a.jpg",
+			Time:                  time.Date(2025, 8, 3, 3, 40, 0, 0, time.UTC),
+			RecordedOffsetMinutes: new(-420),
+			Location:              &site.Location{Lat: 47.1, Lon: -121.1, Source: "interpolated", ElevationMeters: new(1100.0)},
+			Camera:                site.Camera{Make: "SONY", Model: "ILCE-9"},
 		},
 		{File: "c.jpg"},
 	}
@@ -106,9 +109,14 @@ func TestRunWritesPageData(t *testing.T) {
 	}
 
 	// report's own test covers the rest of what's logged.
-	summary := `msg=camera camera="SONY ILCE-9" total_photos=1 recorded_offsets=-07:00 applied_offset=2m44s located_by_track=1`
-	if !strings.Contains(stderr.String(), summary) {
-		t.Errorf("stderr doesn't contain %s; got:\n%s", summary, stderr.String())
+	for _, line := range []string{
+		`msg=camera camera="SONY ILCE-9" total_photos=1 recorded_offsets=-07:00 applied_offset=2m44s located_by_track=1`,
+		`msg="photo left off the page" err="strip metadata from ` + filepath.Join(h.photosDir, "d.jpg"),
+		`msg=done photos=3`,
+	} {
+		if !strings.Contains(stderr.String(), line) {
+			t.Errorf("stderr doesn't contain %s; got:\n%s", line, stderr.String())
+		}
 	}
 }
 

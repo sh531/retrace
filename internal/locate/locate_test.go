@@ -36,8 +36,8 @@ func offsetsFor(byCamera map[exif.Camera]time.Duration) Offsets {
 func TestEnrich(t *testing.T) {
 	at := func(s string) time.Time { return time.Date(2026, 9, 20, 15, 0, 0, 0, time.UTC).Add(mustDuration(s)) }
 	tr := gpx.Track{Points: []gpx.TrackPoint{
-		{Point: geo.Point{Lat: 48, Lon: -121}, Time: at("0s")},
-		{Point: geo.Point{Lat: 49, Lon: -122}, Time: at("10m")},
+		{Point: geo.Point{Lat: 48, Lon: -121}, Time: at("0s"), ElevationMeters: new(1000.0)},
+		{Point: geo.Point{Lat: 49, Lon: -122}, Time: at("10m"), ElevationMeters: new(2000.0)},
 	}}
 	exifLoc := &photo.Location{Point: geo.Point{Lat: 1, Lon: 2}, Source: photo.SourceEXIF}
 	e := Enricher{Track: tr, Offsets: offsetsFor(map[exif.Camera]time.Duration{sony: 2 * time.Minute, apple: -2 * time.Minute})}
@@ -51,21 +51,21 @@ func TestEnrich(t *testing.T) {
 			name: "positive offset, interpolated",
 			p:    photo.Photo{Camera: sony, Time: at("3m")},
 			want: photo.Photo{Camera: sony, Time: at("5m"), Location: &photo.Location{
-				Point: geo.Point{Lat: 48.5, Lon: -121.5}, Source: photo.SourceInterpolated,
+				Point: geo.Point{Lat: 48.5, Lon: -121.5}, Source: photo.SourceInterpolated, ElevationMeters: new(1500.0),
 			}},
 		},
 		{
 			name: "negative offset, interpolated",
 			p:    photo.Photo{Camera: apple, Time: at("4m")},
 			want: photo.Photo{Camera: apple, Time: at("2m"), Location: &photo.Location{
-				Point: geo.Point{Lat: 48.2, Lon: -121.2}, Source: photo.SourceInterpolated,
+				Point: geo.Point{Lat: 48.2, Lon: -121.2}, Source: photo.SourceInterpolated, ElevationMeters: new(1200.0),
 			}},
 		},
 		{
 			name: "no offset for camera",
 			p:    photo.Photo{Camera: exif.Camera{Make: "Canon"}, Time: at("5m")},
 			want: photo.Photo{Camera: exif.Camera{Make: "Canon"}, Time: at("5m"), Location: &photo.Location{
-				Point: geo.Point{Lat: 48.5, Lon: -121.5}, Source: photo.SourceInterpolated,
+				Point: geo.Point{Lat: 48.5, Lon: -121.5}, Source: photo.SourceInterpolated, ElevationMeters: new(1500.0),
 			}},
 		},
 		{
@@ -77,28 +77,28 @@ func TestEnrich(t *testing.T) {
 			name: "offset moves the time onto the track",
 			p:    photo.Photo{Camera: sony, Time: at("-1m")},
 			want: photo.Photo{Camera: sony, Time: at("1m"), Location: &photo.Location{
-				Point: geo.Point{Lat: 48.1, Lon: -121.1}, Source: photo.SourceInterpolated,
+				Point: geo.Point{Lat: 48.1, Lon: -121.1}, Source: photo.SourceInterpolated, ElevationMeters: new(1100.0),
 			}},
 		},
 		{
 			name: "offset moves the time off the track, placed at the last point",
 			p:    photo.Photo{Camera: sony, Time: at("9m")},
 			want: photo.Photo{Camera: sony, Time: at("11m"), Location: &photo.Location{
-				Point: geo.Point{Lat: 49, Lon: -122}, Source: photo.SourceTrackEnd, TimeFromTrackEnd: time.Minute,
+				Point: geo.Point{Lat: 49, Lon: -122}, Source: photo.SourceTrackEnd, TimeFromTrackEnd: time.Minute, ElevationMeters: new(2000.0),
 			}},
 		},
 		{
 			name: "before the track, placed at the first point",
 			p:    photo.Photo{Camera: apple, Time: at("1m")},
 			want: photo.Photo{Camera: apple, Time: at("-1m"), Location: &photo.Location{
-				Point: geo.Point{Lat: 48, Lon: -121}, Source: photo.SourceTrackEnd, TimeFromTrackEnd: -time.Minute,
+				Point: geo.Point{Lat: 48, Lon: -121}, Source: photo.SourceTrackEnd, TimeFromTrackEnd: -time.Minute, ElevationMeters: new(1000.0),
 			}},
 		},
 		{
 			name: "hours after the track",
 			p:    photo.Photo{Camera: exif.Camera{Make: "Canon"}, Time: at("2h14m")},
 			want: photo.Photo{Camera: exif.Camera{Make: "Canon"}, Time: at("2h14m"), Location: &photo.Location{
-				Point: geo.Point{Lat: 49, Lon: -122}, Source: photo.SourceTrackEnd, TimeFromTrackEnd: 2*time.Hour + 4*time.Minute,
+				Point: geo.Point{Lat: 49, Lon: -122}, Source: photo.SourceTrackEnd, TimeFromTrackEnd: 2*time.Hour + 4*time.Minute, ElevationMeters: new(2000.0),
 			}},
 		},
 		{

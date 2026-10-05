@@ -22,7 +22,7 @@ Both install `retrace` to `$(go env GOPATH)/bin` (usually `~/go/bin`), which nee
 
 ## Usage
 
-> retrace is still being built: it writes the page's data (`retrace.json`), and the map page itself comes next.
+### Retrace Command
 
 retrace takes a directory of JPEG photos and a GPX track (with timestamps) recorded on the same hike. Export HEIC and RAW photos as JPEG first, since browsers can't display RAW and most can't display HEIC. retrace reads the files directly inside the photos directory, not its subdirectories.
 
@@ -60,16 +60,33 @@ level=INFO msg=camera camera="none in EXIF" total_photos=1 unlocated=1
 level=INFO msg=done photos=53 output=retrace-out
 ```
 
-| Key | Meaning |
-| --- | --- |
-| `recorded_offsets` | Timezones the camera recorded (`OffsetTimeOriginal`), used to convert its times to UTC. |
-| `assumed_utc` | Photos with no recorded timezone, whose times were taken as UTC. |
-| `applied_offset` | The `-offset` added to this camera's times. |
-| `located_by_exif` | Photos placed by their own EXIF GPS. |
-| `located_by_track` | Photos placed on the track by time. |
-| `located_at_track_end` | Photos taken before the track started or after it ended, placed at its nearest end. |
+
+| Key                       | Meaning                                                                                             |
+| ------------------------- | --------------------------------------------------------------------------------------------------- |
+| `recorded_offsets`        | Timezones the camera recorded (`OffsetTimeOriginal`), used to convert its times to UTC.             |
+| `assumed_utc`             | Photos with no recorded timezone, whose times were taken as UTC.                                    |
+| `applied_offset`          | The `-offset` added to this camera's times.                                                         |
+| `located_by_exif`         | Photos placed by their own EXIF GPS.                                                                |
+| `located_by_track`        | Photos placed on the track by time.                                                                 |
+| `located_at_track_end`    | Photos taken before the track started or after it ended, placed at its nearest end.                 |
 | `max_time_from_track_end` | The furthest of those from the track, in time. Hours usually means the camera's `-offset` is wrong. |
-| `unlocated` | Photos with neither GPS nor a time, so they couldn't be placed. |
+| `unlocated`               | Photos with neither GPS nor a time, so they couldn't be placed.                                     |
+
+### The HTML page
+
+retrace writes a static site to the `-output` directory. Open its `index.html` in a browser, or upload the whole directory to a static host such as GitHub Pages. The map and its library load from the internet, so viewing the page needs a connection.
+
+```
+retrace-out/
+├── index.html      # the page, with the track and photo data inlined
+├── assets/         # the page's script and styles
+├── photos/         # copies of the photos, without personal information
+└── retrace.json    # the same data as the page, for other tools
+```
+
+The page shows the trail on a map with a pin for each photo, and lists the photos by time beside it. Click a pin or a photo in the list to see the photo, when it was taken, the camera settings, and how its pin was placed. Filled pins were placed by the photo's GPS (blue) or on the track by time (orange); hollow pins are photos taken before or after the track, placed at its nearest end. Photos with neither GPS nor a time are listed under "Not on the map". 
+
+Toggle between S, M, and L to set how large the photo is shown. The 3D button under the zoom buttons tilts the map over the mountains, and 2D flattens it again. Use the arrow keys or buttons on the bottom of the page to step through the photos in time order. Times are shown in the timezone the camera recorded, so they read as they did on the hike wherever the page is viewed. Distances are in kilometres or miles, chosen from the browser's language and switchable on the page. 
 
 ### Finding your camera's offset
 
@@ -111,9 +128,9 @@ flowchart TD
     gpxFile(["GPX file"])
     refPhotos(["Reference photos given with --offset"])
 
-    Metadata["<b>exif.Metadata</b><br/>Camera exif.Camera<br/>Time time.Time<br/>TimeOffset *time.Duration<br/>GPS *geo.Point"]
+    Metadata["<b>exif.Metadata</b><br/>Camera exif.Camera<br/>Time time.Time<br/>TimeOffset *time.Duration<br/>GPS *geo.Point<br/>AltitudeMeters *float64"]
     Photo["<b>photo.Photo</b><br/>Path string<br/>Time time.Time<br/>RecordedOffset *time.Duration<br/>Location *photo.Location<br/>Camera exif.Camera<br/>NearbyPOIs []poi.POI"]
-    Location["<b>photo.Location</b><br/>Point geo.Point<br/>Source LocationSource<br/>TimeFromTrackEnd time.Duration"]
+    Location["<b>photo.Location</b><br/>Point geo.Point<br/>Source LocationSource<br/>TimeFromTrackEnd time.Duration<br/>ElevationMeters *float64"]
     Track["<b>gpx.Track</b><br/>Points []gpx.TrackPoint<br/>each with Point geo.Point, Time time.Time,<br/>ElevationMeters *float64"]
     Offsets["<b>locate.Offsets</b><br/>one time.Duration per exif.Camera"]
     Result["<b>enrich.Result</b><br/>Photo photo.Photo<br/>Errs []error"]
@@ -138,7 +155,7 @@ Rounded boxes are retrace's inputs and the other boxes are structs. Each solid a
 - `time.Time` is always UTC. `exif` converts camera time when it reads it and `gpx` converts track time when it parses it, so `locate` compares a photo's `Time` with track times directly.
 - `exif.Camera` (`Make`, `Model`) identifies a camera. It's a struct of two strings, so it can be compared with `==` and used as a map key: `locate.Offsets` stores one offset per `exif.Camera`, and `locate.Summarize` groups photos by it.
 - `photo.Photo` is everything retrace knows about one photo. `photo.FromEXIF` builds it from `exif.Metadata`, renaming `TimeOffset` to `RecordedOffset` so it isn't mistaken for the `--offset` correction. Each enricher takes one and returns an updated copy. Unknown values stay empty instead of using a default that looks real: a zero `Time`, a `nil` `Location`.
-- `photo.Location` (`Point`, `Source`, `TimeFromTrackEnd`) records where a photo was taken and how that was figured out: `exif`, `interpolated`, or `track_end`. `TimeFromTrackEnd` says how far a `track_end` photo was from the track.
+- `photo.Location` (`Point`, `Source`, `TimeFromTrackEnd`, `ElevationMeters`) records where a photo was taken and how that was figured out: `exif`, `interpolated`, or `track_end`. `TimeFromTrackEnd` says how far a `track_end` photo was from the track. `ElevationMeters` comes from the same place as `Point`: EXIF `GPSAltitude`, or the track.
 - `enrich.Result` pairs each finished `photo.Photo` with the errors from enrichers that failed on it, so one bad photo is reported without stopping the run.
 
 ## Design decisions
@@ -178,6 +195,7 @@ Rounded boxes are retrace's inputs and the other boxes are structs. Each solid a
 - A photo taken before the track starts or after it ends is placed at the track's nearest end, with source `track_end` and the time between the photo and that point (`TimeFromTrackEnd`), negative before the start and positive after the end. A recording often stops before the photos do (stopped early, or the phone died), and the end of the track is the best guess. The map can show these pins differently and say how far off they are. retrace reports how many per camera and the longest gap, since many photos at the ends, hours away, means the camera's `--offset` is wrong.
 - A gap inside the track (e.g. the recording paused during a break) is bridged with a straight line, so photos taken during it may be placed off the trail.
 - A photo with no time stays unlocated: adding the `--offset` to a zero time would turn "unknown" into a fake time.
+- A photo's elevation comes from the same place as its position: EXIF `GPSAltitude` for a photo with GPS, the track interpolated by time, or the track end's. It is unknown, not 0 m, when that source has none.
 
 **Some GPS values mean "no fix".**
 
@@ -207,6 +225,8 @@ Rounded boxes are retrace's inputs and the other boxes are structs. Each solid a
 - How EXIF is laid out inside a JPEG (segments, the TIFF header, image file directories) is explained in the package docs: `[internal/exif/doc.go](internal/exif/doc.go)`, or run `go doc ./internal/exif`.
 - exiftool is only used to regenerate the test fixtures, as an independent EXIF writer to check the reader against. Running retrace or its tests doesn't need it.
 
+
+
 ### Enrichment
 
 **Each photo passes through a list of enrichers; photos are processed in parallel.**
@@ -219,6 +239,39 @@ Rounded boxes are retrace's inputs and the other boxes are structs. Each solid a
 - Only cancelling (Ctrl-C) stops a run. Enricher errors never cancel it, so the group is created without `errgroup.WithContext`.
 - It isn't a channel pipeline in the sense of the Go blog's [Pipelines and cancellation](https://go.dev/blog/pipelines) (stages of goroutines connected by channels): enrichers are plain function calls inside one goroutine per photo, since only reading EXIF is slow per photo. Splitting them into stages would add channels to close and cancel without making anything faster.
 - Nearby landmarks (planned) will come from one [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) query per run, covering the area around the track, cached on disk so re-running the same hike (e.g. updating the photos) doesn't query again. A query per photo would mean hundreds of requests, and the public server's usage policy asks for no parallel requests and fewer than 100 queries a day from regularly run apps.
+
+### The HTML page
+
+**Published photos keep only what a browser needs to display them.**
+
+- The output directory is meant to be uploaded, and photos carry personal information: GPS position, camera serial number, capture time, edit history, and sometimes a second copy of the image or a motion photo's video.
+- `exif.StripMetadata` copies each photo's image data as it is, without re-encoding, and keeps only the segments a browser needs: the colour profile (ICC), the JFIF and Adobe segments that tell the decoder how colours are encoded, and EXIF `Orientation`, rewritten as an EXIF block holding only that tag.
+- Listing what to keep, rather than what to remove, also drops metadata retrace doesn't know about, see exiftool's [JPEG tag list](https://exiftool.org/TagNames/JPEG.html). Anything after the end of the image, such as an Android motion photo's video or an iPhone's HDR gain map, is dropped too.
+- A photo that can't be read or stripped is left off the page with a warning. Originals are never copied.
+
+**The data is inlined in the page.**
+
+- `fetch` fails for a page opened from a file, so `index.html` carries the data in a `<script type="application/json">` element. `retrace.json` is written too, for other tools.
+- `html/template` writes the data as JSON with `<`, `>`, and `&` escaped (`\u003c`), so a track name containing `</script>` can't end the element early.
+- The page's template, script, and styles are embedded in the binary with `go:embed`. The script is a classic script, not a module, since browsers block module scripts in a page opened from a file.
+
+**MapLibre GL JS and OpenFreeMap tiles.**
+
+- Neither needs an API key or an account.
+- MapLibre is loaded from jsDelivr with a pinned version (version 5) and a [Subresource Integrity](https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity) hash, so the browser won't run a changed file. The tiles need a connection anyway, so bundling the 1 MB library wouldn't make the page work offline.
+
+**3D terrain is optional.**
+
+- The 3D button draws the map over [Mapterhorn](https://mapterhorn.com)'s open elevation tiles, which need no API key, with hillshading. Compared with AWS Terrain Tiles, the other keyless source, its mountains are sharper.
+- Terrain costs about 5 MB per new view, so the page starts in 2D and downloads none until 3D is chosen; the choice is remembered.
+- In 3D, choosing a photo points the camera the way the hiker was walking, measured from the track 100 m before the photo. Facing north, ridges hid pins in the Colchuck Lake basin, and MapLibre won't show the popup of a pin hidden behind terrain.
+
+**The drawn track is smoothed; the data isn't.**
+
+- A GPS reading is off by a few metres, about as far as a hiker moves between points recorded every second. Drawn as recorded, the example Strava track of the Enchantments zigzags, knots up wherever the hiker stood still, and measures 29.1 mi.
+- The page averages each point with its neighbours within 5 seconds, then keeps a point only once it is 2 m from the last one kept. The line follows the trail's curves, most knots disappear, and the photos' pins stay within about a metre of it. The track then measures 20.1 mi, and the page shows the length of the line it draws.
+- Thinning more removes the last knots but pulls the line away from the pins, since hikers stand still where they take photos: at 3 m some pins were 2.7 m off the line.
+- `retrace.json` and the inlined data keep every recorded point, and photos are placed on the recorded track, so only the drawing and the distance change.
 
 ## Project structure
 
@@ -238,7 +291,8 @@ retrace/
 │   ├── locate/                  # per-camera clock offsets, locating photos on the track
 │   ├── photo/                   # Photo type, listing a photo directory, EXIF enricher
 │   ├── poi/                     # points of interest near a photo (planned)
-│   └── site/                    # output directory: the page's JSON data
+│   └── site/                    # output directory: the page, its data, and the photos without personal information
+│       └── web/                 # the page's HTML template, script, and styles, embedded in the binary
 ├── .devcontainer/
 │   ├── devcontainer.json        # dev container: Go, Git hooks, editor extensions
 │   ├── devcontainer-lock.json   # pinned dev container feature versions

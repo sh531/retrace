@@ -1,0 +1,277 @@
+:root {
+  --text: #1f2328;
+  --muted: #656d76;
+  --border: #d0d7de;
+  --hover: #f3f4f6;
+  --exif: #1971c2;
+  --track: #d9480f;
+  --current: #fff4e6;
+  font: 14px/1.4 system-ui, sans-serif;
+  color: var(--text);
+}
+
+body {
+  margin: 0;
+  height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  background: #fff;
+}
+
+main {
+  position: relative;
+}
+
+#map {
+  height: 100vh;
+}
+
+aside {
+  height: 100vh;
+  overflow-y: auto;
+  border-left: 1px solid var(--border);
+}
+
+header {
+  position: sticky;
+  top: 0;
+  padding: 16px;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+}
+
+h1 {
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+
+h2 {
+  margin: 16px 16px 0;
+  font-size: 16px;
+}
+
+p {
+  margin: 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.strong {
+  font-weight: 600;
+}
+
+#unlocated > p {
+  margin: 4px 16px 0;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: 12px;
+}
+
+.legend {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+}
+
+.legend .pin {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+
+.toggle button {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  background: #fff;
+  cursor: pointer;
+}
+
+.toggle button:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.toggle button:last-child {
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+}
+
+.toggle button[aria-pressed="true"] {
+  background: var(--text);
+  border-color: var(--text);
+  color: #fff;
+}
+
+/* Carousel: the bar at the bottom of the map */
+
+.carousel {
+  position: absolute;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.3);
+}
+
+.carousel > button {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.carousel > button:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.carousel > button:disabled {
+  color: var(--border);
+  cursor: default;
+}
+
+#position {
+  min-width: 220px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The terrain button names the view it switches to, in place of MapLibre's
+   mountain icon. */
+
+.maplibregl-ctrl button.maplibregl-ctrl-terrain .maplibregl-ctrl-icon,
+.maplibregl-ctrl button.maplibregl-ctrl-terrain-enabled .maplibregl-ctrl-icon {
+  background-image: none;
+  font: 600 12px/29px system-ui, sans-serif;
+  color: var(--text);
+}
+
+.maplibregl-ctrl-terrain .maplibregl-ctrl-icon::after {
+  content: "3D";
+}
+
+.maplibregl-ctrl-terrain-enabled .maplibregl-ctrl-icon::after {
+  content: "2D";
+}
+
+/* Photo list */
+
+.photos {
+  margin: 0;
+  padding: 8px;
+  list-style: none;
+}
+
+.photos button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.photos button:hover {
+  background: var(--hover);
+}
+
+.photos .current button {
+  background: var(--current);
+  box-shadow: inset 3px 0 var(--track);
+}
+
+.photos img {
+  width: 96px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--hover);
+}
+
+.photos .text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.photos .text .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Pins: filled for a photo's own GPS or a place on the track, hollow for a
+   photo taken before or after the track, whose place is only a guess. */
+
+.pin {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  box-sizing: border-box;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.3);
+  cursor: pointer;
+}
+
+.pin-exif {
+  background: var(--exif);
+}
+
+.pin-interpolated {
+  background: var(--track);
+}
+
+.pin-track_end {
+  background: #fff;
+  border: 3px solid var(--track);
+}
+
+.pin.active {
+  width: 20px;
+  height: 20px;
+  z-index: 1;
+}
+
+/* Popup */
+
+/* --photo-width is set by the S M L buttons. */
+.popup {
+  width: var(--photo-width, 480px);
+}
+
+.popup img {
+  display: block;
+  width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  margin-bottom: 8px;
+  border-radius: 4px;
+}
+
+.popup .note {
+  margin-top: 6px;
+}
+
+.popup .note-track_end {
+  color: var(--track);
+}

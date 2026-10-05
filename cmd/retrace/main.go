@@ -3,8 +3,8 @@
 // photo pinned where it was taken, and a flythrough that follows the trail.
 //
 // Photos with EXIF GPS are placed directly; the rest are placed by time,
-// using where the track was when each photo was taken. The CLI is still
-// being built; see the README for usage and status.
+// using where the track was when each photo was taken. The flythrough is
+// still being built; see the README for usage and status.
 //
 // Usage:
 //
@@ -114,10 +114,15 @@ func run(ctx context.Context, args []string, stderr io.Writer) error {
 	enriched := enrich.Photos(results)
 	report(log, results, locate.Summarize(enriched, cfg.offsets))
 
-	if err = site.Write(cfg.outputDir, site.New(track, enriched)); err != nil {
+	data := site.New(track, enriched)
+	skipped, err := site.Write(cfg.outputDir, cfg.photosDir, data)
+	if err != nil {
 		return err
 	}
-	log.Info("done", "photos", len(enriched), "output", cfg.outputDir)
+	for _, failure := range skipped {
+		log.Warn("photo left off the page", "err", failure)
+	}
+	log.Info("done", "photos", len(data.Photos)-len(skipped), "output", cfg.outputDir)
 	return nil
 }
 
