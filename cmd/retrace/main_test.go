@@ -66,7 +66,7 @@ func (h hike) args(extra ...string) []string {
 func TestRunWritesPageData(t *testing.T) {
 	h := newHike(t)
 	// a.jpg's camera: 03:37:16 + 2m44s is exactly the track's last point.
-	args := h.args("-offset", filepath.Join(h.photosDir, "a.jpg")+"=2m44s")
+	args := h.args("-offset", filepath.Join(h.photosDir, "a.jpg")+"=2m44s", "-photographer", "Test Hiker")
 	writeFile(t, filepath.Join(h.photosDir, "d.jpg"), "not a JPEG") // left off the page
 
 	var stderr bytes.Buffer
@@ -102,6 +102,9 @@ func TestRunWritesPageData(t *testing.T) {
 	var got site.Data
 	if err := json.Unmarshal(b, &got); err != nil {
 		t.Fatal(err)
+	}
+	if want := "Photos © 2025 Test Hiker. All rights reserved."; got.Copyright != want {
+		t.Errorf("copyright = %q, want %q", got.Copyright, want)
 	}
 	ignoreDetails := cmpopts.IgnoreFields(site.Photo{}, "Lens", "Settings") // covered by the exif and site tests
 	if diff := cmp.Diff(want, got.Photos, ignoreDetails); diff != "" {

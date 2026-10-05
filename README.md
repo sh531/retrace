@@ -49,6 +49,7 @@ retrace -h
 | `-gpx file`              | GPX track recorded during the hike (required).                                                                                                                                                          |
 | `-offset photo=duration` | Corrects the clock of the camera that took `photo`, a path relative to the current directory. Repeatable, once per camera; see [Finding your camera's offset](#finding-your-cameras-offset) (optional). |
 | `-output dir`            | Where to write the page, default `retrace-out`. It must not exist yet or be empty, so retrace never overwrites anything; delete it to run again.                                                        |
+| `-photographer name`     | Adds a copyright notice to the page, e.g. "Photos © 2024 Sarah Hong. All rights reserved.", dated with the year the hike started (optional).                                                            |
 
 retrace keeps going when a photo can't be read or located, and reports it. After the warnings, it prints one line per camera saying how its photos were timed and located, leaving out zero counts. It exits with 0 on success, 1 on an error, and 2 for a mistake in the command line.
 
@@ -84,9 +85,12 @@ retrace-out/
 └── retrace.json    # the same data as the page, for other tools
 ```
 
-The page shows the trail on a map with a pin for each photo, and lists the photos by time beside it. Click a pin or a photo in the list to see the photo, when it was taken, the camera settings, and how its pin was placed. Filled pins were placed by the photo's GPS (blue) or on the track by time (orange); hollow pins are photos taken before or after the track, placed at its nearest end. Photos with neither GPS nor a time are listed under "Not on the map". 
+The page shows the trail on a map with a pin for each photo, and lists the photos by time beside it. Click a pin or a photo in the list to see the photo, when it was taken, the camera settings, and how its pin was placed. Filled pins were placed by the photo's GPS (blue) or on the track by time (orange); hollow pins are photos taken before or after the track, placed at its nearest end. Photos with neither GPS nor a time are listed under "Not on the map". With `-photographer`, the header shows a copyright notice for the photos; see [Design decisions](#the-html-page-1) for why it uses the hike's year. 
 
 Toggle between S, M, and L to set how large the photo is shown. The 3D button under the zoom buttons tilts the map over the mountains, and 2D flattens it again. Use the arrow keys or buttons on the bottom of the page to step through the photos in time order. Times are shown in the timezone the camera recorded, so they read as they did on the hike wherever the page is viewed. Distances are in kilometres or miles, chosen from the browser's language and switchable on the page. 
+
+![3D](./docs/images/3D.png)
+![2D](./docs/images/2D.png)
 
 ### Finding your camera's offset
 
@@ -248,6 +252,12 @@ Rounded boxes are retrace's inputs and the other boxes are structs. Each solid a
 - `exif.StripMetadata` copies each photo's image data as it is, without re-encoding, and keeps only the segments a browser needs: the colour profile (ICC), the JFIF and Adobe segments that tell the decoder how colours are encoded, and EXIF `Orientation`, rewritten as an EXIF block holding only that tag.
 - Listing what to keep, rather than what to remove, also drops metadata retrace doesn't know about, see exiftool's [JPEG tag list](https://exiftool.org/TagNames/JPEG.html). Anything after the end of the image, such as an Android motion photo's video or an iPhone's HDR gain map, is dropped too.
 - A photo that can't be read or stripped is left off the page with a warning. Originals are never copied.
+
+**The copyright notice uses the hike's year.**
+
+- A notice is optional for works created after March 1, 1989, but the U.S. Copyright Office notes legal benefits to including one. It has three parts: ©, the year of first publication, and the owner's name ([Circular 3](https://www.copyright.gov/circs/circ03.pdf)).
+- retrace can't know when photos were first published, since they may have been posted elsewhere. It uses the year the track starts, which is never later, and doesn't change when the page is regenerated.
+- The notice covers the photos only. The page's code is retrace's, under its own license.
 
 **The data is inlined in the page.**
 

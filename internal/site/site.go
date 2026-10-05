@@ -11,8 +11,10 @@
 package site
 
 import (
+	"fmt"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/sh531/retrace/internal/gpx"
@@ -21,8 +23,9 @@ import (
 
 // Data is everything the page shows.
 type Data struct {
-	Track  Track   `json:"track"`
-	Photos []Photo `json:"photos"` // by time, photos without a time last; never null
+	Track     Track   `json:"track"`
+	Photos    []Photo `json:"photos"`             // by time, photos without a time last; never null
+	Copyright string  `json:"copyright,omitzero"` // the photos' copyright notice, from [Copyright]; omitted when there is none
 }
 
 // Track is the recorded GPX track.
@@ -112,6 +115,18 @@ func New(track gpx.Track, photos []photo.Photo) Data {
 		return a.Time.Compare(b.Time)
 	})
 	return d
+}
+
+// Copyright returns a copyright notice for photographer's photos, e.g. "Photos
+// © 2024 Sarah Hong. All rights reserved.", or "" if photographer is blank.
+// A notice names the year of first publication, which retrace can't know,
+// so it uses the year the track starts, which is never later.
+func Copyright(photographer string, track gpx.Track) string {
+	photographer = strings.TrimSpace(photographer)
+	if photographer == "" || len(track.Points) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("Photos © %d %s. All rights reserved.", track.Points[0].Time.Year(), photographer)
 }
 
 // newPhoto converts p for the page.

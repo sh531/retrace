@@ -64,11 +64,12 @@ func TestWrite(t *testing.T) {
 	good := Photo{File: "good.jpg", Time: start}
 	input := Data{
 		// A name that would end the inlined <script> early if it weren't escaped.
-		Track:  Track{Name: `</script><b>"Hike"</b>`, Points: []TrackPoint{{Lat: 47.5, Lon: -120.8, Time: start}}},
-		Photos: []Photo{{File: "bad.jpg"}, good},
+		Track:     Track{Name: `</script><b>"Hike"</b>`, Points: []TrackPoint{{Lat: 47.5, Lon: -120.8, Time: start}}},
+		Photos:    []Photo{{File: "bad.jpg"}, good},
+		Copyright: "Photos © 2024 Ann & Bo. All rights reserved.",
 	}
-	original := Data{Track: input.Track, Photos: slices.Clone(input.Photos)}
-	want := Data{Track: input.Track, Photos: []Photo{good}} // bad.jpg left off
+	original := Data{Track: input.Track, Photos: slices.Clone(input.Photos), Copyright: input.Copyright}
+	want := Data{Track: input.Track, Photos: []Photo{good}, Copyright: input.Copyright} // bad.jpg left off
 
 	for _, tt := range []struct {
 		name  string
@@ -96,8 +97,12 @@ func TestWrite(t *testing.T) {
 			if diff := cmp.Diff(want, decode(t, readFile(t, filepath.Join(dir, DataFile)))); diff != "" {
 				t.Errorf("%s mismatch (-want +got):\n%s", DataFile, diff)
 			}
-			if diff := cmp.Diff(want, decode(t, inlinedData(t, readFile(t, filepath.Join(dir, pageFile))))); diff != "" {
+			page := readFile(t, filepath.Join(dir, pageFile))
+			if diff := cmp.Diff(want, decode(t, inlinedData(t, page))); diff != "" {
 				t.Errorf("data inlined in %s mismatch (-want +got):\n%s", pageFile, diff)
+			}
+			if notice := "<p class=\"muted\">Photos © 2024 Ann &amp; Bo. All rights reserved.</p>"; !bytes.Contains(page, []byte(notice)) {
+				t.Errorf("%s doesn't show the notice %s", pageFile, notice)
 			}
 
 			m, err := exif.Decode(bytes.NewReader(readFile(t, filepath.Join(dir, photosDir, "good.jpg"))))

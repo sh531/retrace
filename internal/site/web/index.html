@@ -30,6 +30,7 @@
       <h1>{{or .Track.Name "Untitled hike"}}</h1>
       <p id="stats"></p>
       {{with .Track.Creator}}<p class="muted">Recorded with {{.}}</p>{{end}}
+      {{with .Copyright}}<p class="muted">{{.}}</p>{{end}}
       <div class="row">
         <ul class="legend">
           <li><span class="pin pin-exif"></span> Photo's GPS</li>

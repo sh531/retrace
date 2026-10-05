@@ -68,10 +68,11 @@ func exitCode(err error) int {
 
 // config is the parsed command line.
 type config struct {
-	photosDir string
-	gpxPath   string
-	offsets   locate.Offsets
-	outputDir string
+	photosDir    string
+	gpxPath      string
+	offsets      locate.Offsets
+	outputDir    string
+	photographer string
 }
 
 // run holds the real entrypoint so it can return errors and be tested
@@ -115,6 +116,7 @@ func run(ctx context.Context, args []string, stderr io.Writer) error {
 	report(log, results, locate.Summarize(enriched, cfg.offsets))
 
 	data := site.New(track, enriched)
+	data.Copyright = site.Copyright(cfg.photographer, track)
 	skipped, err := site.Write(cfg.outputDir, cfg.photosDir, data)
 	if err != nil {
 		return err
@@ -136,6 +138,7 @@ func parseArgs(args []string, stderr io.Writer) (config, error) {
 	fs.StringVar(&cfg.gpxPath, "gpx", "", "GPX `file` recorded during the hike (required)")
 	fs.Var(&cfg.offsets, "offset", "correct the clock of the camera that took photo by duration, given as `photo=duration`; repeatable, once per camera; e.g. DSC00042.jpg=2m30s")
 	fs.StringVar(&cfg.outputDir, "output", "retrace-out", "`dir` to write the page to; must not exist yet or be empty")
+	fs.StringVar(&cfg.photographer, "photographer", "", "`name` of the photographer, for a copyright notice on the page, e.g. \"Sarah Hong\" (optional)")
 	fs.Usage = func() {
 		// Like flag itself, ignore write errors: there's nowhere left to report them.
 		_, _ = fmt.Fprintln(fs.Output(), "Usage: retrace -photos dir -gpx file [flags]")

@@ -77,6 +77,27 @@ func TestNewConvertsTrackAndPhoto(t *testing.T) {
 	}
 }
 
+func TestCredit(t *testing.T) {
+	track := gpx.Track{Points: []gpx.TrackPoint{{Time: start}}}
+	tests := []struct {
+		name, photographer string
+		track              gpx.Track
+		want               string
+	}{
+		{name: "year the track starts", photographer: "Sarah Hong", track: track, want: "Photos © 2024 Sarah Hong. All rights reserved."},
+		{name: "spaces trimmed", photographer: "  Sarah Hong ", track: track, want: "Photos © 2024 Sarah Hong. All rights reserved."},
+		{name: "no photographer", photographer: " ", track: track, want: ""},
+		{name: "no track points", photographer: "Sarah Hong", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Copyright(tt.photographer, tt.track); got != tt.want {
+				t.Errorf("Copyright(%q) = %q, want %q", tt.photographer, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestNewSortsPhotosByTime(t *testing.T) {
 	// 14 photos, more than the 12 that slices sorts by insertion sort (which
 	// is always stable), so an unstable sort would show. Photos 4 and 9 have
