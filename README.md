@@ -276,7 +276,7 @@ Rounded boxes are retrace's inputs and its output, and the other boxes are struc
 
 - `fetch` fails for a page opened from a file, so `index.html` carries the data in a `<script type="application/json">` element, and no separate data file is written.
 - `json.Marshal` escapes `<`, `>`, and `&` (`\u003c`), so a track name containing `</script>` can't end the element early. It also reports encoding errors, which `html/template`'s own escaping would write into the page instead.
-- The page's template, script, and styles are embedded in the binary with `go:embed`. The script is a classic script, not a module, since browsers block module scripts in a page opened from a file.
+- The page's template, scripts, and styles are embedded in the binary with `go:embed`. The scripts are classic scripts, not modules, since browsers block module scripts in a page opened from a file; they share one scope and load in order.
 
 **MapLibre GL JS and OpenFreeMap tiles.**
 
@@ -301,6 +301,11 @@ Rounded boxes are retrace's inputs and its output, and the other boxes are struc
 - Thinning more removes the last knots but pulls the line away from the pins, since hikers stand still where they take photos: at 3 m some pins were 2.7 m off the line.
 - The page's data keeps every recorded point, and photos are placed on the recorded track, so only the drawing and the distance change.
 
+**The page's logic is tested in Node.**
+
+- Formatting, track geometry, and the flythrough's timeline are in their own scripts (`format.js`, `track.js`, `timeline.js`), whose functions take what they need as arguments and touch no page state. `app.js` holds everything that needs the page or the map.
+- So `internal/site/webtest` runs them in Node with its built-in test runner, with no packages or build step: smoothing and gaps in elevation, interpolating along the track, the timeline and its easing, and formatting in a fixed locale. `make check` and CI run them.
+
 ## Project structure
 
 The layout follows the Go team's [Organizing a Go module](https://go.dev/doc/modules/layout) guide. The module contains a [command with supporting packages](https://go.dev/doc/modules/layout#package-or-command-with-supporting-packages), with the command in `cmd/retrace/` and its supporting packages in `internal/`.
@@ -322,9 +327,10 @@ retrace/
 │   ├── locate/                  # per-camera clock offsets, locating photos on the track
 │   ├── photo/                   # Photo type, listing a photo directory, EXIF enricher
 │   └── site/                    # output directory: page data, photos without personal information
-│       └── web/                 # the page's HTML template, script, and styles, embedded with go:embed
+│       ├── web/                 # the page's HTML template, scripts, and styles, embedded with go:embed
+│       └── webtest/             # Node tests for the page's formatting, track, and timeline scripts
 ├── .devcontainer/
-│   ├── devcontainer.json        # dev container: Go, Git hooks, editor extensions
+│   ├── devcontainer.json        # dev container: Go, Node, Git hooks, editor extensions
 │   ├── devcontainer-lock.json   # pinned dev container feature versions
 │   ├── Dockerfile               # base image + exiftool + golangci-lint
 │   └── Dockerfile.dockerignore  # limits the build context to files the Dockerfile copies
@@ -332,10 +338,11 @@ retrace/
 │   └── pre-commit               # tidy, gofmt, vet, and lint before each commit
 ├── .github/
 │   └── workflows/
-│       └── ci.yml               # tidy, gofmt, vet, test -race, build, and lint on push/PR
+│       └── ci.yml               # tidy, gofmt, vet, test -race, JavaScript tests, build, and lint on push/PR
 ├── .gitignore
 ├── .golangci-lint-version       # pinned golangci-lint version (Makefile, CI, dev container)
 ├── .golangci.yml                # linter configuration
+├── .node-version                # Node version for the JavaScript tests (CI, dev container)
 ├── go.mod
 ├── go.sum                       # dependency checksums
 ├── LICENSE
@@ -347,7 +354,7 @@ retrace/
 
 ### Dev container (recommended)
 
-The repo includes a dev container with Go 1.27.1 and the Git hooks pre-configured.
+The repo includes a dev container with Go 1.27.1, Node, and the Git hooks pre-configured.
 
 - **VS Code / Cursor:** install the Dev Containers extension (in Cursor: `@id:anysphere.remote-containers`), then run **Dev Containers: Reopen in Container**. Requires Docker.
 - **Terminal only** (requires Docker and Node):
@@ -358,7 +365,7 @@ The repo includes a dev container with Go 1.27.1 and the Git hooks pre-configure
 
 ### Local
 
-Requires Go 1.27.1+ and golangci-lint (version in `.golangci-lint-version`, [install docs](https://golangci-lint.run/docs/welcome/install/local/)). Point Git at the shared hooks so tidy, gofmt, vet, and lint checks run before each commit:
+Requires Go 1.27.1+, golangci-lint (version in `.golangci-lint-version`, [install docs](https://golangci-lint.run/docs/welcome/install/local/)), and Node (version in `.node-version`) for the page's JavaScript tests. Point Git at the shared hooks so tidy, gofmt, vet, and lint checks run before each commit:
 
 ```sh
 git config core.hooksPath .githooks
@@ -368,6 +375,7 @@ git config core.hooksPath .githooks
 
 ```sh
 make check              # everything CI runs
+make test-js            # just the page's JavaScript tests
 make build              # build to bin/retrace
 go run ./cmd/retrace    # run without installing
 ```

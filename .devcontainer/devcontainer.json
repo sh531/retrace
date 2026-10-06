@@ -7,6 +7,10 @@
   "features": {
     "ghcr.io/devcontainers/features/go:1": {
       "version": "1.27.1"
+    },
+    // For make test-js; the same major version as .node-version.
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "26"
     }
   },
   "postCreateCommand": "git config core.hooksPath .githooks",
