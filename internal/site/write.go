@@ -3,6 +3,7 @@ package site
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/sh531/retrace/internal/exif"
 )
@@ -60,8 +64,9 @@ func CheckDir(dir string) error {
 // its assets, and d's photos from srcDir with their personal information
 // stripped by [exif.StripMetadata]. A photo that can't be read or
 // stripped is left off the page, and its error is returned in skipped. If
-// Write fails, it removes dir. Call [CheckDir] first.
-func Write(dir, srcDir string, d Data) (skipped []error, err error) {
+// ctx is cancelled while photos are copied, Write stops and returns its
+// error. If Write fails, it removes dir. Call [CheckDir] first.
+func Write(ctx context.Context, dir, srcDir string, d Data) (skipped []error, err error) {
 	err = os.Mkdir(dir, 0o750)
 	if err != nil && !errors.Is(err, fs.ErrExist) {
 		return nil, fmt.Errorf("create output directory: %w", err) // os errors include the path
@@ -73,7 +78,7 @@ func Write(dir, srcDir string, d Data) (skipped []error, err error) {
 		}
 	}()
 
-	if d.Photos, skipped, err = copyPhotos(filepath.Join(dir, photosDir), srcDir, d.Photos); err != nil {
+	if d.Photos, skipped, err = copyPhotos(ctx, filepath.Join(dir, photosDir), srcDir, d.Photos, runtime.GOMAXPROCS(0)); err != nil {
 		return nil, err
 	}
 	assets, err := fs.Sub(web, "web/"+assetsDir)
@@ -99,27 +104,50 @@ func Write(dir, srcDir string, d Data) (skipped []error, err error) {
 }
 
 // copyPhotos copies photos from srcDir into dir without their personal
-// information, and returns the ones it copied. A photo that can't be read or
-// stripped is left out, and its error is returned in skipped; failing to
-// write a copy is an error.
-func copyPhotos(dir, srcDir string, photos []Photo) ([]Photo, []error, error) {
+// information, up to workers at a time, and returns the ones it copied, in
+// order. A photo that can't be read or stripped is left out, and its error is
+// returned in skipped, in order. Failing to write a copy is an error, and
+// so is ctx being cancelled; either stops the copying.
+func copyPhotos(ctx context.Context, dir, srcDir string, photos []Photo, workers int) ([]Photo, []error, error) {
 	if err := os.Mkdir(dir, 0o750); err != nil {
 		return nil, nil, fmt.Errorf("create photos directory: %w", err)
 	}
+	// As in enrich.Run, each goroutine writes only its own element of
+	// failures, so no lock is needed and the results keep the photos' order.
+	failures := make([]error, len(photos)) // why each photo was left out, or nil
+	// Unlike enrich.Run's, this group's errors are fatal, so its context is
+	// cancelled on the first one as well as with ctx; photos still waiting
+	// then aren't copied.
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(workers)
+	for i, p := range photos {
+		g.Go(func() error {
+			if err := ctx.Err(); err != nil {
+				return err // Wait returns the first error
+			}
+			// The whole photo, so a bad one fails before its copy is created.
+			// Each worker holds one at a time.
+			var stripped bytes.Buffer
+			if err := stripFile(&stripped, filepath.Join(srcDir, p.File)); err != nil {
+				failures[i] = err
+				return nil
+			}
+			return writeFile(filepath.Join(dir, p.File), func(w io.Writer) error {
+				_, err := stripped.WriteTo(w)
+				return err
+			})
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, nil, err
+	}
+
 	copied := make([]Photo, 0, len(photos)) // a new slice, so the caller's Data is unchanged
 	var skipped []error
-	var stripped bytes.Buffer // the whole photo, so a bad one fails before its copy is created
-	for _, p := range photos {
-		stripped.Reset()
-		if err := stripFile(&stripped, filepath.Join(srcDir, p.File)); err != nil {
-			skipped = append(skipped, err)
+	for i, p := range photos {
+		if failures[i] != nil {
+			skipped = append(skipped, failures[i])
 			continue
-		}
-		if err := writeFile(filepath.Join(dir, p.File), func(w io.Writer) error {
-			_, err := stripped.WriteTo(w)
-			return err
-		}); err != nil {
-			return nil, nil, err
 		}
 		copied = append(copied, p)
 	}
