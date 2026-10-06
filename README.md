@@ -266,6 +266,7 @@ Rounded boxes are retrace's inputs and its output, and the other boxes are struc
 - `exif.StripMetadata` copies each photo's image data as it is, without re-encoding, and keeps only the segments a browser needs: the colour profile (ICC), the JFIF and Adobe segments that tell the decoder how colours are encoded, and, when the photo isn't upright, EXIF `Orientation`, rewritten as an EXIF block holding only that tag.
 - Listing what to keep, rather than what to remove, also drops metadata retrace doesn't know about, see exiftool's [JPEG tag list](https://exiftool.org/TagNames/JPEG.html). Anything after the end of the image, such as an Android motion photo's video or an iPhone's HDR gain map, is dropped too.
 - A photo that can't be read or stripped is left off the page with a warning. Originals are never copied.
+- Photos are stripped and copied in parallel, one per CPU at a time, with the same errgroup pattern as enrichment, so the photos and their warnings stay in order. Unlike enrichment, its group uses `errgroup.WithContext`: a failed write fails the whole run, so it stops the remaining copies, as Ctrl-C does. On the example's 57 photos (300 MB), a whole run took about 0.34 s instead of 0.40 s one photo at a time. Each worker holds one stripped photo in memory, a few MB.
 
 **The copyright notice uses the hike's year.**
 

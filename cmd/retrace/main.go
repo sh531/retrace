@@ -117,7 +117,7 @@ func run(ctx context.Context, args []string, stderr io.Writer) error {
 
 	data := site.New(track, enriched)
 	data.Copyright = site.Copyright(cfg.photographer, track)
-	skipped, err := site.Write(cfg.outputDir, cfg.photosDir, data)
+	skipped, err := site.Write(ctx, cfg.outputDir, cfg.photosDir, data)
 	if err != nil {
 		return err
 	}

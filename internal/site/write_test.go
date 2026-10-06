@@ -2,8 +2,10 @@ package site
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"math"
 	"os"
@@ -83,7 +85,7 @@ func TestWrite(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(t, dir)
 			}
-			skipped, err := Write(dir, srcDir, input)
+			skipped, err := Write(t.Context(), dir, srcDir, input)
 			if err != nil {
 				t.Fatalf("Write: %v", err)
 			}
@@ -119,12 +121,107 @@ func TestWrite(t *testing.T) {
 func TestWriteRemovesDirOnError(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "out")
 	nan := Data{Track: Track{Points: []TrackPoint{{Lat: math.NaN()}}}} // JSON can't encode NaN
-	if _, err := Write(dir, t.TempDir(), nan); err == nil {
+	if _, err := Write(t.Context(), dir, t.TempDir(), nan); err == nil {
 		t.Fatal("Write succeeded with data JSON can't encode")
 	}
 	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("after a failed Write, stat %s: %v; want it not to exist", dir, err)
 	}
+}
+
+func TestCopyPhotos(t *testing.T) {
+	srcDir := t.TempDir()
+	fixture, err := os.ReadFile("../exif/testdata/apple.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Good and bad photos alternate, so the bad ones, which fail at once,
+	// finish before good ones started earlier; the results must still be in
+	// the photos' order.
+	var photos, wantCopied []Photo
+	var wantSkipped, wantFiles []string
+	for i := range 20 {
+		name := fmt.Sprintf("%02d.jpg", i)
+		p := Photo{File: name}
+		photos = append(photos, p)
+		if i%2 == 0 {
+			writeTestFile(t, filepath.Join(srcDir, name), fixture)
+			wantCopied = append(wantCopied, p)
+			wantFiles = append(wantFiles, name)
+		} else {
+			writeTestFile(t, filepath.Join(srcDir, name), []byte("not a JPEG"))
+			wantSkipped = append(wantSkipped, name)
+		}
+	}
+
+	for _, workers := range []int{1, 8} {
+		t.Run(fmt.Sprintf("%d workers", workers), func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "photos")
+			copied, skipped, err := copyPhotos(t.Context(), dir, srcDir, photos, workers)
+			if err != nil {
+				t.Fatalf("copyPhotos: %v", err)
+			}
+			if diff := cmp.Diff(wantCopied, copied); diff != "" {
+				t.Errorf("copied mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(wantSkipped, skippedNames(t, skipped, photos)); diff != "" {
+				t.Errorf("skipped mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(wantFiles, files(t, dir)); diff != "" {
+				t.Errorf("files mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestCopyPhotosWriteError(t *testing.T) {
+	srcDir := t.TempDir()
+	fixture, err := os.ReadFile("../exif/testdata/apple.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mkdir(t, filepath.Join(srcDir, "sub"))
+	writeTestFile(t, filepath.Join(srcDir, "sub", "good.jpg"), fixture)
+	// The copy goes to dir/sub/good.jpg, and dir has no sub directory.
+	_, _, err = copyPhotos(t.Context(), filepath.Join(t.TempDir(), "photos"), srcDir, []Photo{{File: "sub/good.jpg"}}, 8)
+	if err == nil {
+		t.Fatal("copyPhotos succeeded although a copy couldn't be written")
+	}
+}
+
+func TestWriteCancelled(t *testing.T) {
+	srcDir := t.TempDir()
+	fixture, err := os.ReadFile("../exif/testdata/apple.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(srcDir, "good.jpg"), fixture)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel() // as Ctrl-C would, before the photos are copied
+
+	dir := filepath.Join(t.TempDir(), "out")
+	d := Data{Track: Track{Points: []TrackPoint{{Lat: 47.5, Lon: -120.8, Time: start}}}, Photos: []Photo{{File: "good.jpg"}}}
+	if _, err := Write(ctx, dir, srcDir, d); !errors.Is(err, context.Canceled) {
+		t.Errorf("Write error = %v, want errors.Is context.Canceled", err)
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("after a cancelled Write, stat %s: %v; want it not to exist", dir, err)
+	}
+}
+
+// skippedNames returns, for each error in skipped, the name of the photo it
+// is about.
+func skippedNames(t *testing.T, skipped []error, photos []Photo) []string {
+	t.Helper()
+	var names []string
+	for _, err := range skipped {
+		i := slices.IndexFunc(photos, func(p Photo) bool { return strings.Contains(err.Error(), p.File) })
+		if i < 0 {
+			t.Fatalf("skipped error names no photo: %v", err)
+		}
+		names = append(names, photos[i].File)
+	}
+	return names
 }
 
 // inlinedData returns the JSON inlined in the page's data script.
