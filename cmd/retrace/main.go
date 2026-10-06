@@ -3,12 +3,12 @@
 // photo pinned where it was taken, and a flythrough that follows the trail.
 //
 // Photos with EXIF GPS are placed directly; the rest are placed by time,
-// using where the track was when each photo was taken. The flythrough is
-// still being built; see the README for usage and status.
+// using where the track was when each photo was taken. See the README for
+// usage and design notes.
 //
 // Usage:
 //
-//	retrace -photos dir -gpx file [-offset photo=duration]... [-output dir]
+//	retrace -photos dir -gpx file [-offset photo=duration]... [-output dir] [-photographer name]
 package main
 
 import (

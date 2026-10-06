@@ -91,7 +91,7 @@ func TestWrite(t *testing.T) {
 			if len(skipped) != 1 || !strings.Contains(skipped[0].Error(), "bad.jpg") {
 				t.Errorf("skipped = %v, want one error about bad.jpg", skipped)
 			}
-			if diff := cmp.Diff([]string{"assets/app.js", "assets/style.css", "index.html", "photos/good.jpg"}, files(t, dir)); diff != "" {
+			if diff := cmp.Diff([]string{"assets/app.js", "assets/format.js", "assets/style.css", "assets/timeline.js", "assets/track.js", "index.html", "photos/good.jpg"}, files(t, dir)); diff != "" {
 				t.Errorf("files mismatch (-want +got):\n%s", diff)
 			}
 			page := readFile(t, filepath.Join(dir, pageFile))

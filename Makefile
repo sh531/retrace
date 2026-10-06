@@ -1,11 +1,13 @@
 # Single source of truth for the checks run by CI and the pre-commit hook.
-# .golangci-lint-version is also read by CI and the dev container Dockerfile.
+# .golangci-lint-version is also read by CI and the dev container Dockerfile;
+# .node-version is read by CI and matches the dev container's Node feature.
 GOLANGCI_LINT_VERSION := $(shell cat .golangci-lint-version)
+NODE_VERSION := $(shell cat .node-version)
 
-.PHONY: check tidy-check fmt-check vet lint test build clean
+.PHONY: check tidy-check fmt-check vet lint test test-js build clean
 
 ## check: run everything CI runs
-check: tidy-check fmt-check vet lint test build
+check: tidy-check fmt-check vet lint test test-js build
 
 tidy-check:
 	go mod tidy -diff
@@ -33,6 +35,14 @@ lint:
 
 test:
 	go test -race ./...
+
+## test-js: the page's JavaScript tests, in Node; times and numbers are formatted for en-US
+test-js:
+	@command -v node >/dev/null || { \
+		echo "node not found; install Node $(NODE_VERSION): https://nodejs.org/en/download"; \
+		exit 1; \
+	}
+	LC_ALL=en_US.UTF-8 node --test 'internal/site/webtest/*.test.mjs'
 
 build:
 	go build -o bin/retrace ./cmd/retrace

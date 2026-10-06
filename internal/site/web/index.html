@@ -11,6 +11,10 @@
           integrity="sha384-5+cfbwT0iiub6VsQAdn6yz16nr6sDiQoHx6tm4O8OVYXHYOxcffFmCJBL0dgdvGp" crossorigin="anonymous"></script>
   <!-- Inlined rather than fetched, since fetch fails for a page opened from a file. -->
   <script id="data" type="application/json">{{.JSON}}</script>
+  <!-- Deferred scripts run in this order; app.js uses the other three. -->
+  <script src="assets/format.js" defer></script>
+  <script src="assets/track.js" defer></script>
+  <script src="assets/timeline.js" defer></script>
   <script src="assets/app.js" defer></script>
 </head>
 <body>
