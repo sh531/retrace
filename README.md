@@ -97,6 +97,8 @@ The page shows the trail on a map with a pin for each photo, and lists the photo
 
 Toggle between S, M, and L to set how large the photo is shown. The 3D button under the zoom buttons tilts the map over the mountains, and 2D flattens it again. Use the arrow keys or buttons on the bottom of the page to step through the photos in time order. Times are shown in the timezone the camera recorded, so they read as they did on the hike wherever the page is viewed. Distances and elevations are metric or imperial, chosen from the browser's language and switchable on the page. Ctrl-drag (or right-drag) tilts and turns the map.
 
+Press ▶ (or Space) to fly along the trail: a marker follows the track, pausing at each photo, which shows with its details in a panel above the bar. The bar shows the elevation profile, with a tick for each photo; click or drag on it to jump along the track. Clicking a pin or a photo in the list, or pressing × or Esc, stops the flythrough. In 3D, the camera looks the way the hiker was walking.
+
 ![3D](./docs/images/3D.png)
 ![2D](./docs/images/2D.png)
 
@@ -290,7 +292,12 @@ Rounded boxes are retrace's inputs and its output, and the other boxes are struc
 
 - The 3D button draws the map over [Mapterhorn](https://mapterhorn.com)'s open elevation tiles, which need no API key, with hillshading. Compared with AWS Terrain Tiles, the other keyless source, its mountains are sharper.
 - Terrain costs about 5 MB per new view, so the page starts in 2D and downloads none until 3D is chosen; the choice is remembered.
-- In 3D, choosing a photo points the camera the way the hiker was walking, measured from the track 100 m before the photo. Facing north, ridges hid pins in the Colchuck Lake basin, and MapLibre won't show the popup of a pin hidden behind terrain.
+- In 3D, choosing a photo points the camera the way the hiker was walking, measured from the track 100 m before the photo. Facing north, ridges hid pins in the Colchuck Lake basin.
+
+**Pins are drawn by the map, not as page elements.**
+
+- MapLibre's markers are HTML elements placed over the map. In 3D, each one checks on every camera move whether terrain hides it, by reading a pixel back from the GPU, which makes the browser wait for the GPU to finish drawing.
+- With the example's 57 pins, moving the camera over terrain ran at about 21 frames a second. Drawn as circle layers, which the map renders with everything else, it ran at about 56, measured back to back in the same browser.
 
 **The drawn track is smoothed; the data isn't.**
 

@@ -14,14 +14,48 @@
   <script src="assets/app.js" defer></script>
 </head>
 <body>
+  <!-- The × of the photo panel and the popup, added by app.js. -->
+  <template id="close-button">
+    <button type="button" class="icon-button close" aria-label="Close the photo" title="Close (Esc)">
+      <svg class="stroked" viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 4.5l11 11M15.5 4.5l-11 11"/></svg>
+    </button>
+  </template>
   <main>
     <div id="map"></div>
-    <div class="carousel" role="group" aria-label="Photos">
-      <button type="button" id="previous" aria-label="Previous photo" disabled>‹</button>
-      <span id="position" aria-live="polite"></span>
-      <button type="button" id="next" aria-label="Next photo">›</button>
-      <div class="toggle" role="group" aria-label="Photo size">
-        <button type="button" data-size="s">S</button><button type="button" data-size="m">M</button><button type="button" data-size="l">L</button>
+    <div class="dock">
+      <figure id="panel" hidden>
+        <div class="frames"><img alt=""><img alt=""></div>
+        <figcaption></figcaption>
+      </figure>
+      <div class="bar" role="group" aria-label="Photos">
+        <div class="profile">
+          <svg preserveAspectRatio="none" aria-hidden="true">
+            <path class="ground"></path>
+            <path class="line"></path>
+            <path class="ticks ticks-exif"></path>
+            <path class="ticks ticks-interpolated"></path>
+            <path class="ticks ticks-track_end"></path>
+            <line class="playhead" y1="0" y2="100%"></line>
+          </svg>
+          <input type="range" id="scrub" min="0" value="0" step="any" aria-label="Position on the track" title="Drag to a photo">
+          <div class="handle"></div>
+        </div>
+        <div class="controls">
+          <button type="button" class="icon-button" id="previous" aria-label="Previous photo" title="Previous photo (←)" disabled>
+            <svg class="stroked" viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5"/></svg>
+          </button>
+          <button type="button" class="icon-button" id="play" aria-label="Play" title="Play (Space)">
+            <svg class="play" viewBox="0 0 20 20" aria-hidden="true"><path d="M6.5 4.5v11l9-5.5z"/></svg>
+            <svg class="pause" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4.5h2.75v11H6zM11.25 4.5H14v11h-2.75z"/></svg>
+          </button>
+          <button type="button" class="icon-button" id="next" aria-label="Next photo" title="Next photo (→)">
+            <svg class="stroked" viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4.5 13 10l-5.5 5.5"/></svg>
+          </button>
+          <span id="bar-label" aria-live="polite"></span>
+          <div class="toggle" role="group" aria-label="Photo size" title="Adjust photo size">
+            <button type="button" data-size="s">S</button><button type="button" data-size="m">M</button><button type="button" data-size="l">L</button>
+          </div>
+        </div>
       </div>
     </div>
   </main>
