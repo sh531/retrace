@@ -136,6 +136,7 @@ A few small types carry all of retrace's data. Packages share them instead of co
 config:
   flowchart:
     wrappingWidth: 400
+    curve: linear
 ---
 flowchart TD
     jpegs(["JPEG photos in the photos directory"])
@@ -162,9 +163,9 @@ flowchart TD
     Photo -.->|"Location field"| Location
 
     Photo -->|enrich.Run| Result
+    Result -->|"site.New, from enrich.Photos"| Data
     Result -->|locate.Summarize| Summary
 
-    Result -->|"site.New, from enrich.Photos"| Data
     Track -->|site.New| Data
     Data -->|site.Write| outDir
     jpegs -->|"exif.StripMetadata, in site.Write"| outDir
