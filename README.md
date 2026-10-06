@@ -2,7 +2,7 @@
 
 Go tool that places hike photos along a GPX track, using each photo's EXIF GPS or its time on the track. Runs locally and builds a static web page showing the photos on an interactive 2D and 3D map, for revisiting or sharing viewpoints.
 
-**Live example:** [The Enchantments](https://retrace-enchantments.shong88tx.workers.dev/), a page retrace generated from 57 photos and a Strava track. Try the 3D button and the arrow keys, as described in [The HTML page](#the-html-page). Ctrl-drag (or right-drag) tilts and turns the map.
+**Live example:** [The Enchantments](https://retrace-enchantments.shong88tx.workers.dev/), a page retrace generated from 57 photos and a Strava track. Try the 3D button and the arrow keys, as described in [The HTML page](#the-html-page).
 
 ## Motivation
 
@@ -40,12 +40,9 @@ retrace takes a directory of JPEG photos and a GPX track (with timestamps) recor
 # Phone photos: the clock sets itself, so no offset is needed
 retrace -photos ~/Pictures/enchantments -gpx enchantments.gpx
 
-# Camera photos, where the camera's clock is 2m30s behind the phone
-retrace -photos ~/Pictures/enchantments -gpx enchantments.gpx \
-  -offset ~/Pictures/enchantments/DSC00042.jpg=2m30s
-
-# Phone and camera photos together, written to another directory
-# (the offset applies only to the camera that took DSC00042.jpg)
+# Directory containing both camera and phone photos, where the camera's clock is 2m30s behind the phone
+# (the offset applies only to the camera that took DSC00042.jpg),
+# output written to another directory
 retrace -photos ~/Pictures/enchantments -gpx enchantments.gpx \
   -offset ~/Pictures/enchantments/DSC00042.jpg=2m30s -output ~/Sites/enchantments
 
@@ -104,7 +101,7 @@ Press ▶ (or Space) to fly along the trail: a marker follows the track, pausing
 
 ### Finding your camera's offset
 
-If the photos have no GPS, retrace places them on the track by time. It converts each photo's `DateTimeOriginal` to UTC using the timezone the camera recorded in `OffsetTimeOriginal`. If the camera recorded no timezone, retrace assumes the time is already UTC. The flag `-offset photo=duration` then adds a correction for the camera that took the `photo`, e.g. `-offset DSC00042.jpg=2m30s`: every photo with the same EXIF `Make` and `Model` as DSC00042.jpg gets 2m30s added. Use the clock photo from the steps below, or any other photo from that camera. Repeat the flag once per camera. If you don't add an offset for a camera, there will be no correction. Photos taken by a phone won't need an offset correction since their clocks set themselves.
+Photos without GPS are placed on the track by time, so a camera whose clock is off needs a correction: `-offset DSC00042.jpg=2m30s` adds 2m30s to every photo with the same EXIF `Make` and `Model` as DSC00042.jpg (use the clock photo from the steps below, or any photo from that camera; repeat the flag once per camera). Phones set their clocks themselves and need none.
 
 How to determine the -offset duration:
 
@@ -177,10 +174,9 @@ flowchart TD
 Rounded boxes are retrace's inputs and its output, and the other boxes are structs. Each solid arrow is labelled with the function that writes the struct it points to; the dotted arrow is a field. How photos pass through the enrichers is described under [Enrichment](#enrichment).
 
 - `geo.Point` (`Lat`, `Lon`) is the only coordinate type. Track points, EXIF GPS, and photo locations all use it, so `locate` copies a `gpx.TrackPoint`'s `Point` straight into a `photo.Location`.
-- `time.Time` is always UTC. `exif` converts camera time when it reads it and `gpx` converts track time when it parses it, so `locate` compares a photo's `Time` with track times directly.
 - `exif.Camera` (`Make`, `Model`) identifies a camera. It's a struct of two strings, so it can be compared with `==` and used as a map key: `locate.Offsets` stores one offset per `exif.Camera`, and `locate.Summarize` groups photos by it.
-- `photo.Photo` is everything retrace knows about one photo. `photo.FromEXIF` builds it from `exif.Metadata`, renaming `TimeOffset` to `RecordedOffset` so it isn't mistaken for the `-offset` correction. Each enricher takes one and returns an updated copy. Unknown values stay empty instead of using a default that looks real: a zero `Time`, a `nil` `Location`.
-- `photo.Location` (`Point`, `Source`, `TimeFromTrackEnd`, `ElevationMeters`) records where a photo was taken and how that was figured out: `exif`, `interpolated`, or `track_end`. `TimeFromTrackEnd` says how far a `track_end` photo was from the track. `ElevationMeters` comes from the same place as `Point`: EXIF `GPSAltitude`, or the track.
+- `photo.Photo` is everything retrace knows about one photo. `photo.FromEXIF` builds it from `exif.Metadata`, renaming `TimeOffset` to `RecordedOffset` so it isn't mistaken for the `-offset` correction. Each enricher takes one and returns an updated copy.
+- `photo.Location` (`Point`, `Source`, `TimeFromTrackEnd`, `ElevationMeters`) records where a photo was taken and how that was figured out: `exif`, `interpolated`, or `track_end`. `TimeFromTrackEnd` says how far a `track_end` photo was from the track.
 - `enrich.Result` pairs each finished `photo.Photo` with the errors from enrichers that failed on it, so one bad photo is reported without stopping the run.
 - `site.Data` is what the page shows, built by `site.New` from the track and the enriched photos. Its types are separate from `photo.Photo` and `gpx.Track` because the JSON is a contract with the page's JavaScript: key names carry units (`elevation_meters`, `seconds_from_track_end`), and it leaves out what the page doesn't need. `site.Write` writes it into `index.html` and copies each photo through `exif.StripMetadata`.
 
@@ -258,8 +254,7 @@ Rounded boxes are retrace's inputs and its output, and the other boxes are struc
 - An enricher (`enrich.Enricher`) takes a photo and returns an updated copy: reading EXIF first, then location. They run in order for each photo, since locating needs the time EXIF provides.
 - One enricher failing doesn't stop the others: its result is discarded, the error is kept with the photo, and the next enricher gets the photo unchanged. So a photo with malformed EXIF is kept, unlocated, with a warning: one bad photo out of 500 shouldn't ruin the run, though a bad GPX file still does.
 - Enrichers take and return a photo value rather than a pointer. If an enricher fails, its returned photo is ignored and the next enricher gets the photo from before. That's only safe if the failed enricher changed nothing but its own copy, and the copy is shallow: pointer fields such as `Location` point at the same data in both the original and returned photos. So enrichers must assign new values to those fields instead of modifying them.
-- Concurrency uses [errgroup](https://pkg.go.dev/golang.org/x/sync/errgroup) from the Go team's `golang.org/x/sync`, whose `SetLimit` caps how many photos are processed at once. Each goroutine writes only its own element of the results slice, so no mutex or channel is needed and results stay in input order.
-- No lock is needed because nothing is shared: the Go [memory model](https://go.dev/ref/mem) only calls it a data race when goroutines access the same memory location, and each goroutine writes a different element. Reading the results after `Wait` is safe because a `sync.WaitGroup`'s `Done` "synchronizes before" `Wait` returns. This is the pattern in errgroup's own `ExampleGroup_parallel`. The tests run `Run` with several workers under `go test -race`, which reports any unsafe write.
+- Concurrency uses [errgroup](https://pkg.go.dev/golang.org/x/sync/errgroup) from the Go team's `golang.org/x/sync`, whose `SetLimit` caps how many photos are processed at once. Each goroutine writes only its own element of the results slice, so results stay in input order and no lock is needed: the Go [memory model](https://go.dev/ref/mem) only calls it a data race when goroutines access the same memory location, and reading the results after `Wait` is safe because `Done` "synchronizes before" `Wait` returns. This is the pattern in errgroup's own `ExampleGroup_parallel`, and the tests run `Run` with several workers under `go test -race`.
 - Only cancelling (Ctrl-C) stops a run. Enricher errors never cancel it, so the group is created without `errgroup.WithContext`.
 - It isn't a channel pipeline in the sense of the Go blog's [Pipelines and cancellation](https://go.dev/blog/pipelines) (stages of goroutines connected by channels): enrichers are plain function calls inside one goroutine per photo, since only reading EXIF is slow per photo. Splitting them into stages would add channels to close and cancel without making anything faster.
 
@@ -276,7 +271,6 @@ Rounded boxes are retrace's inputs and its output, and the other boxes are struc
 
 - A notice is optional for works created after March 1, 1989, but the U.S. Copyright Office notes legal benefits to including one. It has three parts: ©, the year of first publication, and the owner's name ([Circular 3](https://www.copyright.gov/circs/circ03.pdf)).
 - retrace can't know when photos were first published, since they may have been posted elsewhere. It uses the year the track starts, which is never later, and doesn't change when the page is regenerated.
-- The notice covers the photos only. The page's code is retrace's, under its own license.
 
 **The data is inlined in the page.**
 
