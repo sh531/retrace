@@ -504,13 +504,23 @@ function highlightPin(index, on) {
 const popup = new maplibregl.Popup({ offset: 12, maxWidth: "none", anchor: "bottom", closeOnClick: false, closeButton: false });
 popup.on("close", () => stops[current]?.row.classList.remove("current"));
 
+// resumeFrom sets the flythrough to resume from the photo at index in stops,
+// and moves the profile's playhead to it. A photo without a time isn't on
+// the timeline, so nothing changes.
+function resumeFrom(index) {
+  const { meters } = stops[index];
+  if (meters === undefined) return;
+  clock = timeline.find((part) => part.stop === index).start;
+  renderPlayhead(meters);
+}
+
 // openPopup opens the popup of the photo at index in stops, leaving the
 // flythrough, which resumes from this photo. The content is built here: an
 // <img> starts downloading as soon as it has a src.
 function openPopup(index) {
   leaveFlythrough();
-  const { photo, meters } = stops[index];
-  if (meters !== undefined) clock = timeline.find((part) => part.stop === index).start;
+  resumeFrom(index);
+  const { photo } = stops[index];
   const content = popupContent(photo);
   content.querySelector("img").addEventListener("load", fitPopup);
   popup.remove(); // before select, as closing unhighlights the current row
@@ -526,6 +536,7 @@ function show(index) {
   leaveFlythrough(); // before flyTo, so the follow camera doesn't move the map
   popup.remove();
   select(index);
+  resumeFrom(index); // now, rather than once the camera arrives
   // No padding: the flythrough leaves some to keep its marker clear of the dock.
   const camera = { center, zoom: Math.max(map.getZoom(), photoZoom), padding: noPadding };
   if (map.getTerrain() && meters !== undefined) {
@@ -755,6 +766,15 @@ function clockAt(meters) {
   return part.start + (Math.acos(1 - 2 * fraction) / Math.PI) * part.seconds; // inverse of ease
 }
 
+// renderPlayhead moves the profile's playhead, its handle, and the scrub
+// input to meters along the drawn track.
+function renderPlayhead(meters) {
+  playhead.setAttribute("x1", meters);
+  playhead.setAttribute("x2", meters);
+  handle.style.left = `${(meters / Math.max(trackMeters, 1)) * 100}%`;
+  scrub.value = String(meters);
+}
+
 // renderFlythrough moves the hiker, playhead, panel, and label to the clock.
 function renderFlythrough() {
   const index = partIndexAt(clock);
@@ -763,10 +783,7 @@ function renderFlythrough() {
   hiker = pointAt("meters", part.from + ease(fraction) * (part.to - part.from));
   atPhoto = part.stop !== undefined;
   map.getSource("hiker")?.setData(hikerGeoJSON()); // added on load
-  playhead.setAttribute("x1", hiker.meters);
-  playhead.setAttribute("x2", hiker.meters);
-  handle.style.left = `${(hiker.meters / Math.max(trackMeters, 1)) * 100}%`;
-  scrub.value = String(hiker.meters);
+  renderPlayhead(hiker.meters);
   // The panel shows the last photo the marker has reached, and the next
   // one downloads on the way.
   const reached = timeline.findLast((p) => p.stop !== undefined && p.start <= clock);
