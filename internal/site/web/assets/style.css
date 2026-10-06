@@ -6,7 +6,10 @@
   --exif: #1971c2;
   --track: #d9480f;
   --current: #fff4e6;
-  font: 14px/1.4 system-ui, sans-serif;
+  --ring: 0 0 0 1px rgb(0 0 0 / 0.3); /* the thin dark outline of pins and the scrub handle */
+  --font: 14px/1.4 system-ui, sans-serif;
+  --profile-height: 56px;
+  font: var(--font);
   color: var(--text);
 }
 
@@ -86,6 +89,12 @@ p {
   margin-right: 4px;
 }
 
+/* A toggle's buttons stay on one line. */
+.toggle {
+  display: flex;
+  flex: none;
+}
+
 .toggle button {
   padding: 4px 10px;
   border: 1px solid var(--border);
@@ -108,43 +117,234 @@ p {
   color: #fff;
 }
 
-/* Carousel: the bar at the bottom of the map */
+/* Dock: the flythrough's photo panel above the bar, at the bottom of
+   the map. Only its boxes take clicks; the map shows through around them. */
 
-.carousel {
+.dock {
   position: absolute;
   bottom: 32px;
   left: 50%;
   transform: translateX(-50%);
+  width: min(880px, calc(100% - 32px));
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.dock > * {
+  pointer-events: auto;
+}
+
+/* The panel and the bar are white cards over the map. */
+#panel,
+.bar {
+  box-sizing: border-box;
   background: #fff;
   border-radius: 8px;
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.3);
 }
 
-.carousel > button {
+/* --photo-width is set by the S M L buttons, for the panel and the popup. */
+#panel {
+  width: var(--photo-width, 480px);
+  max-width: 100%;
+  margin: 0;
+  padding: 8px;
+}
+
+/* The two images stack in one cell and cross-fade. */
+#panel .frames {
+  display: grid;
+}
+
+#panel img {
+  grid-area: 1 / 1;
+  width: 100%;
+  max-height: 50vh;
+  object-fit: contain;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.6s;
+}
+
+#panel img.shown {
+  opacity: 1;
+}
+
+#panel figcaption {
+  margin-top: 8px;
+}
+
+/* Icon buttons: the bar's ‹ ▶ › and the × of the panel and the popup. The
+   icons share a 20 px box and an 11 px height, so they match whatever fonts
+   the browser has. */
+.icon-button {
   width: 32px;
   height: 32px;
+  padding: 0;
   border: none;
   border-radius: 6px;
   background: none;
-  font-size: 24px;
-  line-height: 1;
+  color: var(--text);
   cursor: pointer;
 }
 
-.carousel > button:hover:not(:disabled) {
+.icon-button:hover:not(:disabled) {
   background: var(--hover);
 }
 
-.carousel > button:disabled {
+.icon-button:disabled {
   color: var(--border);
   cursor: default;
 }
 
-#position {
+.icon-button svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+  margin: auto;
+  fill: currentColor;
+}
+
+.icon-button .stroked {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The × sits in its own row above the photo, at the right. */
+.close {
+  display: block;
+  margin: -6px -6px 2px auto;
+}
+
+.bar {
+  width: 100%;
+  padding: 6px 12px;
+}
+
+/* On a narrow map, the photo size toggle wraps below the label. */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 8px; /* clear of the profile and its handle */
+}
+
+/* The profile is drawn by the SVG; the range input over it, invisible,
+   takes the clicks, drags, and keys that move along the track. */
+
+.profile {
+  position: relative;
+  height: var(--profile-height);
+  border-radius: 4px;
+}
+
+.profile:hover {
+  background: var(--hover);
+}
+
+.profile:focus-within {
+  outline: 2px solid var(--exif);
+}
+
+.profile svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.profile svg path,
+.profile svg line {
+  vector-effect: non-scaling-stroke;
+}
+
+.profile svg .ground {
+  fill: color-mix(in srgb, var(--track) 12%, transparent);
+}
+
+.profile svg .line {
+  fill: none;
+  stroke: var(--track);
+  stroke-width: 1.5;
+}
+
+.profile svg .ticks {
+  stroke-width: 2;
+}
+
+.ticks-exif {
+  stroke: var(--exif);
+}
+
+.ticks-interpolated,
+.ticks-track_end {
+  stroke: var(--track);
+}
+
+.profile svg .playhead {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+#scrub {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  appearance: none;
+}
+
+/* A 1 px thumb, so a click lands where it would on the profile: the browser
+   maps the value across the width less its thumb's. */
+#scrub::-webkit-slider-thumb {
+  appearance: none;
+  width: 1px;
+  height: var(--profile-height);
+}
+
+#scrub::-moz-range-thumb {
+  width: 1px;
+  height: var(--profile-height);
+  border: none;
+}
+
+/* The handle tops the playhead, showing it can be dragged; the range input
+   under it takes the drag. */
+.profile .handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--text);
+  box-shadow: var(--ring);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+#play .pause,
+#play.playing .play {
+  display: none;
+}
+
+#play.playing .pause {
+  display: block;
+}
+
+#bar-label {
+  flex: 1;
   min-width: 220px;
   text-align: center;
   font-variant-numeric: tabular-nums;
@@ -219,8 +419,10 @@ p {
   white-space: nowrap;
 }
 
-/* Pins: filled for a photo's own GPS or a place on the track, hollow for a
-   photo taken before or after the track, whose place is only a guess. */
+/* Pins in the legend and the list: filled for a photo's own GPS or a place
+   on the track, hollow for a photo taken before or after the track, whose
+   place is only a guess. The map draws the same pins as circle layers
+   (addPinLayers in app.js). */
 
 .pin {
   width: 14px;
@@ -229,8 +431,7 @@ p {
   box-sizing: border-box;
   border: 2px solid #fff;
   border-radius: 50%;
-  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.3);
-  cursor: pointer;
+  box-shadow: var(--ring);
 }
 
 .pin-exif {
@@ -246,15 +447,15 @@ p {
   border: 3px solid var(--track);
 }
 
-.pin.active {
-  width: 20px;
-  height: 20px;
-  z-index: 1;
+/* Popup: like the panel, with the page's font rather than MapLibre's 12 px,
+   and the panel's padding and corners. */
+
+.maplibregl-popup-content {
+  padding: 8px;
+  border-radius: 8px;
+  font: var(--font);
 }
 
-/* Popup */
-
-/* --photo-width is set by the S M L buttons. */
 .popup {
   width: var(--photo-width, 480px);
 }
@@ -268,10 +469,10 @@ p {
   border-radius: 4px;
 }
 
-.popup .note {
+.note {
   margin-top: 6px;
 }
 
-.popup .note-track_end {
+.note-track_end {
   color: var(--track);
 }
