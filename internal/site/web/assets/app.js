@@ -2,8 +2,15 @@
 // on a MapLibre map with a list of photos beside it. It's a classic script,
 // not a module, because browsers block module scripts in a page opened from
 // a file.
+//
+// Its sections, in order: settings, formatting, track geometry, page
+// elements, photos and the flythrough's timeline, the map, choosing a photo,
+// the bar, the panel, flythrough playback, photo size, the header, and Start,
+// which wires up the controls and draws the page. Everything above Start only
+// defines things, or computes them from the data.
 "use strict";
 
+// The page's data, inlined in index.html by retrace.
 const data = JSON.parse(document.getElementById("data").textContent);
 const points = data.track.points;
 
@@ -39,6 +46,15 @@ function defaultUnits() {
 }
 
 let units = loadSetting(unitsKey, ["metric", "imperial"], defaultUnits());
+
+// Photo size: the width of the photo in the panel and the popup.
+const photoSizeKey = "retrace.photoSize";
+const photoWidths = { s: 320, m: 480, l: 720 };
+
+let photoSize = loadSetting(photoSizeKey, Object.keys(photoWidths), "m");
+
+// Terrain: whether the map was last shown in 3D; read when terrain is added.
+const terrainKey = "retrace.terrain";
 
 // Formatting
 
@@ -145,6 +161,15 @@ function distanceMeters(a, b) {
   return 2 * earthRadiusMeters * Math.asin(Math.sqrt(h));
 }
 
+// bearingBetween returns the initial direction from one point to another, in
+// degrees clockwise from north.
+function bearingBetween(from, to) {
+  const rad = Math.PI / 180;
+  const y = Math.sin((to.lon - from.lon) * rad) * Math.cos(to.lat * rad);
+  const x = Math.cos(from.lat * rad) * Math.sin(to.lat * rad) - Math.sin(from.lat * rad) * Math.cos(to.lat * rad) * Math.cos((to.lon - from.lon) * rad);
+  return Math.atan2(y, x) / rad;
+}
+
 // The drawn track. GPS jitter makes raw points zigzag, and knot where the
 // hiker stood still, so each point is averaged over ±smoothingSeconds, then
 // thinned to one every minStepMeters. The page data keeps every raw point.
@@ -237,6 +262,19 @@ function pointAt(key, value) {
   };
 }
 
+// The 3D camera looks the way the hiker was walking, so ridges ahead don't
+// hide the pins: facing north, they hid those in the Colchuck Lake basin.
+const lookBackMeters = 100;
+
+// headingAt returns the direction the hiker was walking at meters along the
+// drawn track, from the point lookBackMeters before, in degrees clockwise
+// from north; undefined at the track's very start.
+function headingAt(meters) {
+  const from = pointAt("meters", meters - lookBackMeters);
+  const to = pointAt("meters", meters);
+  return distanceMeters(from, to) > 1 ? bearingBetween(from, to) : undefined;
+}
+
 // Page elements
 
 // element returns a new element with a class and text.
@@ -317,6 +355,85 @@ function listItem(photo) {
   return li;
 }
 
+// Photos: a pin on the map and a row in the list for each located photo, and
+// a row under "Not on the map" for the rest. The located photos, in time
+// order, are the bar's stops; the arrows step through them.
+const stops = []; // {photo, row, meters} for each located photo
+let current = -1; // index in stops of the photo last shown; -1 before any
+
+for (const photo of data.photos) {
+  const row = listItem(photo);
+  if (!photo.location) {
+    row.querySelector("button").addEventListener("click", () => window.open(photoURL(photo), "_blank"));
+    document.querySelector("#unlocated ol").append(row);
+    document.getElementById("unlocated").hidden = false;
+    continue;
+  }
+
+  const index = stops.length;
+  // Where the hiker was on the drawn track when the photo was taken, which
+  // is near its pin unless the pin came from the photo's GPS; undefined
+  // without a time, so playback skips it.
+  const meters = photo.time ? pointAt("time", Date.parse(photo.time)).meters : undefined;
+  stops.push({ photo, row, meters });
+
+  row.querySelector("button").addEventListener("click", () => show(index));
+  row.addEventListener("mouseenter", () => highlightPin(index, true));
+  row.addEventListener("mouseleave", () => highlightPin(index, false));
+  document.getElementById("photos").append(row);
+}
+
+// Flythrough: ▶ moves a marker along the drawn track, pausing at each photo
+// with a time, which shows in a panel above the bar. The timeline is a list
+// of parts, each moving the marker from one place to the next or pausing at
+// a photo; clock is the playback time in seconds.
+const metersPerSecond = 100; // how fast the marker travels, before clamping a leg
+const minLegSeconds = 1.5;
+const maxLegSeconds = 8; // a long stretch without photos isn't worth waiting for
+const photoSeconds = 3; // how long each photo shows
+const turnSeconds = 1.5; // how slowly the 3D camera turns to the new bearing, so switchbacks don't swing it
+
+// buildTimeline returns the flythrough's parts in order, and their total
+// length in seconds. Each part is {start, seconds, from, to, stop}: from and
+// to are metres along the drawn track, and stop is the index in stops of the
+// photo a pause shows, undefined while moving. The parts move to each photo
+// with a time, pause there, and go on to the track's end.
+function buildTimeline() {
+  const parts = [];
+  let total = 0;
+  const add = (seconds, from, to, stop) => {
+    parts.push({ start: total, seconds, from, to, stop });
+    total += seconds;
+  };
+  let at = 0;
+  stops.forEach((stop, index) => {
+    if (stop.meters === undefined) return;
+    add(legSeconds(stop.meters - at), at, stop.meters);
+    add(photoSeconds, stop.meters, stop.meters, index);
+    at = stop.meters;
+  });
+  add(legSeconds(trackMeters - at), at, trackMeters);
+  return { parts, total };
+}
+
+// legSeconds returns how long the marker takes to travel meters: none for
+// photos at the same place.
+function legSeconds(meters) {
+  return meters > 0 ? Math.min(Math.max(meters / metersPerSecond, minLegSeconds), maxLegSeconds) : 0;
+}
+
+const { parts: timeline, total: timelineSeconds } = buildTimeline();
+
+// Flythrough state
+let clock = 0;
+let playing = false;
+let flying = false; // the hiker and the panel show, in place of the popup
+let hiker = pointAt("meters", 0); // where the flythrough's marker is on the drawn track
+let atPhoto = false; // whether the marker is pausing at a photo
+let cameraBearing = 0;
+let lastFrame;
+let frameRequest; // the pending requestAnimationFrame, so only one loop runs
+
 // Map
 
 // cssColor returns the value of a colour variable in style.css, so the map's
@@ -369,10 +486,26 @@ map.on("load", () => {
   addTerrain();
 });
 
+// Camera
+const photoZoom = 14; // the map zooms in at least this far to show a photo or follow the hiker
+const noPadding = { top: 0, bottom: 0, left: 0, right: 0 }; // undoes dockPadding's
+
+// dockPadding returns map padding that keeps the centre clear of the dock:
+// right of the photo panel, whether or not it shows yet, so the camera
+// doesn't jump when it appears, and above the bar.
+function dockPadding() {
+  const box = map.getContainer().getBoundingClientRect();
+  const dock = document.querySelector(".dock").getBoundingClientRect();
+  return {
+    ...noPadding,
+    left: dock.left - box.left + Math.min(photoWidths[photoSize], dock.width),
+    bottom: box.bottom - document.querySelector(".bar").getBoundingClientRect().top,
+  };
+}
+
 // Terrain: a 3D button draws the map over Mapterhorn's elevation tiles, with
 // hillshading. The page starts in 2D, which downloads no terrain tiles,
 // unless the viewer chose 3D before.
-const terrainKey = "retrace.terrain";
 const terrainTiles = "https://tiles.mapterhorn.com/tilejson.json";
 const tiltDegrees = 60; // a top-down view of terrain looks flat, so 3D tilts the map
 
@@ -397,34 +530,6 @@ function addTerrain() {
     saveSetting(terrainKey, on ? "3d" : "2d");
   });
   if (loadSetting(terrainKey, ["2d", "3d"], "2d") === "3d") map.setTerrain(terrain);
-}
-
-// Photos: a pin on the map and a row in the list for each located photo, and
-// a row under "Not on the map" for the rest. The located photos, in time
-// order, are the bar's stops; the arrows step through them.
-const stops = []; // {photo, row, meters} for each located photo
-let current = -1; // index in stops of the photo last shown; -1 before any
-
-for (const photo of data.photos) {
-  const row = listItem(photo);
-  if (!photo.location) {
-    row.querySelector("button").addEventListener("click", () => window.open(photoURL(photo), "_blank"));
-    document.querySelector("#unlocated ol").append(row);
-    document.getElementById("unlocated").hidden = false;
-    continue;
-  }
-
-  const index = stops.length;
-  // Where the hiker was on the drawn track when the photo was taken, which
-  // is near its pin unless the pin came from the photo's GPS; undefined
-  // without a time, so playback skips it.
-  const meters = photo.time ? pointAt("time", Date.parse(photo.time)).meters : undefined;
-  stops.push({ photo, row, meters });
-
-  row.querySelector("button").addEventListener("click", () => show(index));
-  row.addEventListener("mouseenter", () => highlightPin(index, true));
-  row.addEventListener("mouseleave", () => highlightPin(index, false));
-  document.getElementById("photos").append(row);
 }
 
 // Pins are circle layers rather than DOM markers. In 3D, MapLibre checks
@@ -566,35 +671,19 @@ function fitPopup() {
   });
 }
 
-// The 3D camera looks the way the hiker was walking, so ridges ahead don't
-// hide the pins: facing north, they hid those in the Colchuck Lake basin.
-const photoZoom = 14; // the map zooms in at least this far to show a photo or follow the hiker
-const lookBackMeters = 100;
-
-// headingAt returns the direction the hiker was walking at meters along the
-// drawn track, from the point lookBackMeters before, in degrees clockwise
-// from north; undefined at the track's very start.
-function headingAt(meters) {
-  const from = pointAt("meters", meters - lookBackMeters);
-  const to = pointAt("meters", meters);
-  return distanceMeters(from, to) > 1 ? bearingBetween(from, to) : undefined;
-}
-
-// bearingBetween returns the initial direction from one point to another, in
-// degrees clockwise from north.
-function bearingBetween(from, to) {
-  const rad = Math.PI / 180;
-  const y = Math.sin((to.lon - from.lon) * rad) * Math.cos(to.lat * rad);
-  const x = Math.cos(from.lat * rad) * Math.sin(to.lat * rad) - Math.sin(from.lat * rad) * Math.cos(to.lat * rad) * Math.cos((to.lon - from.lon) * rad);
-  return Math.atan2(y, x) / rad;
-}
-
 // select makes the photo at index the current one, highlighting its row.
 function select(index) {
   current = index;
   stops.forEach((stop, i) => stop.row.classList.toggle("current", i === index));
   stops[index].row.scrollIntoView({ block: "nearest" });
   renderBar();
+}
+
+// closePhoto leaves the flythrough, or closes the popup, back to the map.
+function closePhoto() {
+  leaveFlythrough();
+  popup.remove();
+  stops[current]?.row.classList.remove("current");
 }
 
 // Bar: the elevation profile and controls at the bottom of the map.
@@ -633,22 +722,6 @@ function step(by) {
   const index = current < 0 ? (by > 0 ? 0 : -1) : current + by;
   if (index >= 0 && index < stops.length) show(index);
 }
-
-previousButton.addEventListener("click", () => step(-1));
-nextButton.addEventListener("click", () => step(1));
-playButton.addEventListener("click", () => (playing ? pause() : play()));
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") closePhoto();
-  if (event.target === scrub) return; // its own arrow keys move it
-  if (event.key === "ArrowLeft") step(-1);
-  if (event.key === "ArrowRight") step(1);
-  // Space on a focused button already clicks it.
-  if (event.key === " " && !event.target.closest("button, input, a")) {
-    event.preventDefault(); // don't scroll the page
-    if (playing) pause();
-    else play();
-  }
-});
 
 // Elevation profile: distance along the drawn track against elevation, with
 // a tick for each photo and a playhead. Its viewBox is in metres, so the SVG
@@ -692,54 +765,37 @@ function renderProfile() {
   scrub.max = String(trackMeters);
 }
 
-renderProfile();
+// Panel: the photo while flying, cross-faded from the one before. Two
+// stacked images take turns; the new one fades in once it has loaded.
+const panel = document.getElementById("panel");
 
-// Flythrough: ▶ moves a marker along the drawn track, pausing at each photo
-// with a time, which shows in a panel above the bar. The timeline is a list
-// of parts, each moving the marker from one place to the next or pausing at
-// a photo; clock is the playback time in seconds.
-const metersPerSecond = 100; // how fast the marker travels, before clamping a leg
-const minLegSeconds = 1.5;
-const maxLegSeconds = 8; // a long stretch without photos isn't worth waiting for
-const photoSeconds = 3; // how long each photo shows
-const turnSeconds = 1.5; // how slowly the 3D camera turns to the new bearing, so switchbacks don't swing it
-
-// timeline holds {start, seconds, from, to, stop} parts in order: from and to
-// are metres along the drawn track, and stop is the index in stops of the
-// photo a pause shows, undefined while moving.
-const timeline = [];
-let timelineSeconds = 0; // the whole timeline
-
-function addPart(seconds, from, to, stop) {
-  timeline.push({ start: timelineSeconds, seconds, from, to, stop });
-  timelineSeconds += seconds;
+function showPanel(photo) {
+  panel.hidden = false;
+  panel.querySelector("figcaption").replaceChildren(...photoDetails(photo));
+  const [first, second] = panel.querySelectorAll("img");
+  const [shown, hidden] = first.classList.contains("shown") ? [first, second] : [second, first];
+  if (shown.getAttribute("src") === photoURL(photo)) return;
+  // onload, not addEventListener: a newer photo replaces the handler of one
+  // still loading.
+  hidden.onload = () => {
+    hidden.classList.add("shown");
+    shown.classList.remove("shown");
+  };
+  hidden.src = photoURL(photo);
+  hidden.alt = photo.file;
 }
 
-// legSeconds returns how long the marker takes to travel meters: none for
-// photos at the same place.
-function legSeconds(meters) {
-  return meters > 0 ? Math.min(Math.max(meters / metersPerSecond, minLegSeconds), maxLegSeconds) : 0;
+// preload starts downloading photo, so it can show as soon as the marker
+// reaches it.
+const preloaded = new Set();
+
+function preload(photo) {
+  if (!photo || preloaded.has(photo)) return;
+  preloaded.add(photo);
+  new Image().src = photoURL(photo);
 }
 
-{
-  let at = 0;
-  stops.forEach((stop, index) => {
-    if (stop.meters === undefined) return;
-    addPart(legSeconds(stop.meters - at), at, stop.meters);
-    addPart(photoSeconds, stop.meters, stop.meters, index);
-    at = stop.meters;
-  });
-  addPart(legSeconds(trackMeters - at), at, trackMeters);
-}
-
-let clock = 0;
-let playing = false;
-let flying = false; // the hiker and the panel show, in place of the popup
-let hiker = pointAt("meters", 0); // where the flythrough's marker is on the drawn track
-let atPhoto = false; // whether the marker is pausing at a photo
-let cameraBearing = 0;
-let lastFrame;
-let frameRequest; // the pending requestAnimationFrame, so only one loop runs
+// Flythrough playback
 
 // showHiker shows or hides the flythrough's marker.
 function showHiker(on) {
@@ -875,78 +931,8 @@ function followHiker(seconds) {
   map.jumpTo(camera);
 }
 
-// dockPadding returns map padding that keeps the centre clear of the dock:
-// right of the photo panel, whether or not it shows yet, so the camera
-// doesn't jump when it appears, and above the bar.
-const noPadding = { top: 0, bottom: 0, left: 0, right: 0 };
-
-function dockPadding() {
-  const box = map.getContainer().getBoundingClientRect();
-  const dock = document.querySelector(".dock").getBoundingClientRect();
-  return {
-    ...noPadding,
-    left: dock.left - box.left + Math.min(photoWidths[photoSize], dock.width),
-    bottom: box.bottom - document.querySelector(".bar").getBoundingClientRect().top,
-  };
-}
-
-// The follow camera's jumpTo cancels any gesture in progress, so pressing on
-// the map pauses, leaving the drag or click to MapLibre.
-map.getCanvasContainer().addEventListener("pointerdown", pause);
-
-scrub.addEventListener("input", () => {
-  pause();
-  clock = clockAt(Number(scrub.value));
-  enterFlythrough();
-  renderFlythrough();
-  map.jumpTo({ center: lonLat(hiker), padding: dockPadding() });
-});
-
-// Panel: the photo while flying, cross-faded from the one before. Two
-// stacked images take turns; the new one fades in once it has loaded.
-const panel = document.getElementById("panel");
-
-function showPanel(photo) {
-  panel.hidden = false;
-  panel.querySelector("figcaption").replaceChildren(...photoDetails(photo));
-  const [first, second] = panel.querySelectorAll("img");
-  const [shown, hidden] = first.classList.contains("shown") ? [first, second] : [second, first];
-  if (shown.getAttribute("src") === photoURL(photo)) return;
-  // onload, not addEventListener: a newer photo replaces the handler of one
-  // still loading.
-  hidden.onload = () => {
-    hidden.classList.add("shown");
-    shown.classList.remove("shown");
-  };
-  hidden.src = photoURL(photo);
-  hidden.alt = photo.file;
-}
-
-// closePhoto leaves the flythrough, or closes the popup, back to the map.
-function closePhoto() {
-  leaveFlythrough();
-  popup.remove();
-  stops[current]?.row.classList.remove("current");
-}
-
-panel.prepend(closeButton());
-
-// preload starts downloading photo, so it can show as soon as the marker
-// reaches it.
-const preloaded = new Set();
-
-function preload(photo) {
-  if (!photo || preloaded.has(photo)) return;
-  preloaded.add(photo);
-  new Image().src = photoURL(photo);
-}
-
-// Photo size: the width of the photo in a popup.
-const photoSizeKey = "retrace.photoSize";
-const photoWidths = { s: 320, m: 480, l: 720 };
-
-let photoSize = loadSetting(photoSizeKey, Object.keys(photoWidths), "m");
-
+// Photo size: S, M, and L set the width of the photo in the panel and the
+// popup.
 function renderPhotoSize() {
   document.body.style.setProperty("--photo-width", `${photoWidths[photoSize]}px`);
   for (const button of document.querySelectorAll("[data-size]")) {
@@ -957,18 +943,7 @@ function renderPhotoSize() {
   if (flying && !playing) map.easeTo({ center: lonLat(hiker), padding: dockPadding() });
 }
 
-for (const button of document.querySelectorAll("[data-size]")) {
-  button.addEventListener("click", () => {
-    photoSize = button.dataset.size;
-    saveSetting(photoSizeKey, photoSize);
-    renderPhotoSize();
-  });
-}
-
-renderPhotoSize();
-renderBar();
-
-// Header
+// Header: the hike's date, distance, duration, and photo count.
 function renderStats() {
   const parts = [
     formatTime(points[0].time, hikeOffsetMinutes, { dateStyle: "medium" }), // a GPX track has at least one point
@@ -983,6 +958,45 @@ function renderStats() {
   scale.setUnit(units);
 }
 
+// Start: the controls' listeners, then the first render. Rows in the list
+// and pins on the map get theirs when they're made.
+
+previousButton.addEventListener("click", () => step(-1));
+nextButton.addEventListener("click", () => step(1));
+playButton.addEventListener("click", () => (playing ? pause() : play()));
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closePhoto();
+  if (event.target === scrub) return; // its own arrow keys move it
+  if (event.key === "ArrowLeft") step(-1);
+  if (event.key === "ArrowRight") step(1);
+  // Space on a focused button already clicks it.
+  if (event.key === " " && !event.target.closest("button, input, a")) {
+    event.preventDefault(); // don't scroll the page
+    if (playing) pause();
+    else play();
+  }
+});
+
+// The follow camera's jumpTo cancels any gesture in progress, so pressing on
+// the map pauses, leaving the drag or click to MapLibre.
+map.getCanvasContainer().addEventListener("pointerdown", pause);
+
+scrub.addEventListener("input", () => {
+  pause();
+  clock = clockAt(Number(scrub.value));
+  enterFlythrough();
+  renderFlythrough();
+  map.jumpTo({ center: lonLat(hiker), padding: dockPadding() });
+});
+
+for (const button of document.querySelectorAll("[data-size]")) {
+  button.addEventListener("click", () => {
+    photoSize = button.dataset.size;
+    saveSetting(photoSizeKey, photoSize);
+    renderPhotoSize();
+  });
+}
+
 for (const button of document.querySelectorAll("[data-units]")) {
   button.addEventListener("click", () => {
     units = button.dataset.units;
@@ -993,4 +1007,8 @@ for (const button of document.querySelectorAll("[data-units]")) {
   });
 }
 
+panel.prepend(closeButton());
+renderProfile();
+renderPhotoSize();
+renderBar();
 renderStats();
